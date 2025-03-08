@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version (e.g., 1.0.0)'
+        description: "Version (e.g., 1.0.0)"
         required: true
 
 jobs:
@@ -51,7 +51,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.VERSION }}
+          tag_name: ${{ github.event.inputs.tag_name }}
           files: |
             dist/dinosonic-linux-x86
             dist/dinosonic-linux-aarch64
