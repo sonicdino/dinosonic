@@ -1,0 +1,57 @@
+name: Build and Release Dinosonic
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (e.g., 1.0.0)"
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [linux, linuxarm, mac, macarm, windows]
+        include:
+          - platform: linux
+            file_ext: tar.gz
+            artifact: dinosonic-linux-x86_64.tar.gz
+          - platform: linuxarm
+            file_ext: tar.gz
+            artifact: dinosonic-linux-arm64.tar.gz
+          - platform: mac
+            file_ext: tar.gz
+            artifact: dinosonic-mac-x86_64.tar.gz
+          - platform: macarm
+            file_ext: tar.gz
+            artifact: dinosonic-mac-arm64.tar.gz
+          - platform: windows
+            file_ext: zip
+            artifact: dinosonic-windows-x86_64.zip
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Latest Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: latest
+
+      - name: Run Build Task
+        run: deno task build:${{ matrix.platform }}
+
+      - name: Package Binary
+        run: |
+          if [ "${{ matrix.file_ext }}" == "zip" ]; then
+            zip ${{ matrix.artifact }} dist/dinosonic.exe
+          else
+            tar -czvf ${{ matrix.artifact }} -C dist dinosonic
+          fi
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          files: ${{ matrix.artifact }}

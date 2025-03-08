@@ -1,87 +1,142 @@
-import { parseArgs } from "jsr:@std/cli/parse-args";
-import { parse } from "jsr:@std/toml";
-import * as path from "jsr:@std/path";
-import { ConfigSchema, SubsonicUserSchema } from "./zod.ts";
-import { SERVER_VERSION } from "./util.ts";
-import { scanMediaDirectories } from "./MediaScanner.ts";
-let configFile = "./config.json";
+import { Config, ConfigSchema, SubsonicUserSchema } from './zod.ts';
+import { scanMediaDirectories } from './MediaScanner.ts';
+import { parseArgs } from 'parse-args';
+import { logger, SERVER_VERSION, setDatabase, setupLogger } from './util.ts';
+import restRoutes from './client/rest/index.ts';
+// import apiRoutes from "./client/api/index.ts";
+import { Context, Hono, Next } from 'hono';
+import { parse } from 'toml';
+import * as path from 'path';
+let configFile = Deno.env.get('DINO_CONFIG_FILE');
+let config = null;
 
 if (Deno.args.length) {
-  const args = parseArgs(Deno.args, {
-    boolean: ["help", "version"],
-    string: ["config"],
-    alias: { help: "h", version: "v", config: "c" },
-    unknown: (arg) => {
-      console.error(
-        `Unknown option "${arg}". try running "denosonic -h" for help.`,
-      );
-      Deno.exit(127);
-    },
-  });
+    const args = parseArgs(Deno.args, {
+        boolean: ['help', 'version'],
+        string: ['config'],
+        alias: { help: 'h', version: 'v', config: 'c' },
+        unknown: (arg) => {
+            console.error(
+                `Unknown option "${arg}". try running "denosonic -h" for help.`,
+            );
+            Deno.exit(127);
+        },
+    });
 
-  if (args.config) configFile = Deno.args[1];
-  if (args.help) {
-    console.log(`Usage: dinosonic [OPTIONS...]`);
-    console.log("\nOptional flags:");
-    console.log("  -h, --help                Display this help and exit");
-    console.log(
-      "  -v, --version             Display the current version of Dinosonic",
-    );
-    console.log(
-      '  -c, --config              Set the config file location. Default will be "./config.json"',
-    );
-    Deno.exit(0);
-  }
+    if (args.config) configFile = Deno.args[1];
+    if (args.help) {
+        console.log(`Usage: dinosonic [OPTIONS...]`);
+        console.log('\nOptional flags:');
+        console.log('  -h, --help                Display this help and exit');
+        console.log(
+            '  -v, --version             Display the current version of Dinosonic',
+        );
+        console.log(
+            '  -c, --config              Set the config file location. Default will be "./config.json"',
+        );
+        Deno.exit(0);
+    }
 
-  if (args.version) {
-    console.log(SERVER_VERSION);
-    Deno.exit(0);
-  }
+    if (args.version) {
+        console.log(SERVER_VERSION);
+        Deno.exit(0);
+    }
 }
 
-console.log(`Config file: ${configFile}`);
-const configText = await Deno.readTextFile(configFile);
-const configParse = ConfigSchema.safeParse(parse(configText));
+logger.info(configFile ? `Config file: ${configFile}` : 'No config file provided, trying to get configuration from env.');
+
+let configParse;
+if (configFile) {
+    const configText = await Deno.readTextFile(configFile);
+    configParse = ConfigSchema.safeParse(parse(configText));
+} else {
+    const conf: Config = {
+        port: parseInt(Deno.env.get('DINO_PORT') || '4100'),
+        log_level: Deno.env.get('DINO_LOG_LEVEL') || 'OFF',
+        // @ts-expect-error If data folder is not set via env, error and exit.
+        data_folder: Deno.env.get('DINO_DATA_FOLDER'),
+        music_folders: Deno.env.get('DINO_MUSIC_FOLDERS')?.split(';') || [],
+        scan_on_start: Deno.env.get('DINO_SCAN_ON_START') === 'true',
+        // @ts-expect-error If default admin password is not set via env, error and exit.
+        default_admin_password: Deno.env.get('DINO_DEFAULT_ADMIN_PASSWORD'),
+    };
+
+    if (Deno.env.get('DINO_LASTFM_ENABLED') || Deno.env.get('DINO_LASTFM_SCROBBLING')) {
+        conf.last_fm = {
+            enabled: Deno.env.get('DINO_LASTFM_ENABLED') === 'true' || Deno.env.get('DINO_LASTFM_SCROBBLING') === 'true',
+            api_key: Deno.env.get('DINO_LASTFM_APIKEY'),
+            api_secret: Deno.env.get('DINO_LASTFM_APISECRET'),
+            enable_scrobbling: Deno.env.get('DINO_LASTFM_SCROBBLING') === 'true',
+        };
+    }
+
+    if (Deno.env.get('DINO_TRANSCODING_ENABLED')) {
+        conf.transcoding = {
+            enabled: Deno.env.get('DINO_TRANSCODING_ENABLED') === 'true',
+            ffmpeg_path: Deno.env.get('DINO_FFMPEG_PATH') || 'ffmpeg',
+        };
+    }
+
+    configParse = ConfigSchema.safeParse(conf);
+}
+
 if (!configParse.success) {
-  console.error(
-    configParse.error.issues.map((issue) => {
-      return `Config Error in ${issue.path.join(".")}: ${issue.message}`;
-    }).join("\n"),
-  );
-  Deno.exit(1);
+    console.error(configParse.error.format());
+    Deno.exit(1);
 }
-const config = configParse.data;
-const database = await Deno.openKv(
-  path.join(config.data_folder as string, "dinosonic.db"),
-);
 
-if (!(await database.get(["users", "admin"])).value) {
-  // TODO: add Logging.
-  await database.set(["users", "admin"], {
-    backend: {
-      username: "admin",
-      password: config.default_admin_password,
-    },
-    subsonic: SubsonicUserSchema.parse({
-      username: "admin",
-      adminRole: true,
-      scrobblingEnabled: true,
-      settingsRole: true,
-      downloadRole: true,
-      playlistRole: true,
-      streamRole: true,
-    }),
-  });
+config = configParse.data;
+
+if (!config.data_folder.length) throw new Error('Data folder path is empty! change config or environment variable!');
+if (!config.default_admin_password.length) throw new Error('Default admin password is empty! are you asking to get hacked?');
+
+await setupLogger(config.log_level);
+
+const database = await Deno.openKv(path.join(config.data_folder as string, 'dinosonic.db'));
+setDatabase(database);
+
+if (!(await database.get(['users', 'admin'])).value) {
+    // TODO: add Logging.
+    await database.set(['users', 'admin'], {
+        backend: {
+            username: 'admin',
+            password: config.default_admin_password,
+        },
+        subsonic: SubsonicUserSchema.parse({
+            username: 'admin',
+            adminRole: true,
+            scrobblingEnabled: true,
+            settingsRole: true,
+            downloadRole: true,
+            playlistRole: true,
+            streamRole: true,
+        }),
+    });
 }
 
 if (config.scan_on_start) {
-  console.log("Starting media scan...");
-  scanMediaDirectories(database, config.music_folders, config);
+    logger.info('Starting media scan...');
+    scanMediaDirectories(database, config.music_folders, config);
 }
 
-// for await (const item of database.list({ prefix: ["tracks"] })) {
-//   console.log(item)
-// }
+logger.info('🚀 Starting Dinosonic server...');
+const app = new Hono();
 
-console.log("🚀 Starting Dinosonic server...");
-// await startServer(database, config)
+app.use('*', async (c: Context, next: Next) => {
+    const start = Date.now();
+    await next();
+    const duration = Date.now() - start;
+    logger.debug(`[${c.req.method}] ${c.req.url} - ${duration}ms`);
+});
+
+// app.route("/admin", adminRoutes);
+app.route('/rest', restRoutes);
+// app.route("/api", apiRoutes);
+
+app.get('/', (c: Context) => c.text('Dinosonic Subsonic Server is running!'));
+
+// Start the server on the configured port
+const port = config.port ?? 4100;
+Deno.serve({ port, hostname: '0.0.0.0' }, app.fetch);
+
+logger.info(`🌍 Server running on http://localhost:${port}`);

@@ -1,8 +1,36 @@
 {
-  "tasks": {
-    "dev": "deno run --watch main.ts"
-  },
-  "imports": {
-    "@std/assert": "jsr:@std/assert@1"
-  }
+    "tasks": {
+        "dev": "deno run --allow-read --allow-net --allow-write --allow-run --allow-env --watch src/main.ts",
+        "build": "deno compile --allow-read --allow-net --allow-write --allow-run --allow-env --output dist/dinosonic src/main.ts",
+        "build:linux": "deno compile --allow-read --allow-net --allow-write --allow-run --allow-env --target x86_64-unknown-linux-gnu --output dist/dinosonic-linux-x86 src/main.ts",
+        "build:mac": "deno compile --allow-read --allow-net --allow-write --allow-run --allow-env --target x86_64-apple-darwin --output dist/dinosonic-mac-x86 src/main.ts",
+        "build:linuxarm": "deno compile --allow-read --allow-net --allow-write --allow-run --allow-env --target aarch64-unknown-linux-gnu --output dist/dinosonic-linux-aarch64 src/main.ts",
+        "build:macarm": "deno compile --allow-read --allow-net --allow-write --allow-run --allow-env --target aarch64-apple-darwin --output dist/dinosonic-mac-aarch64 src/main.ts",
+        "build:windows": "deno compile --allow-read --allow-net --allow-write --allow-run --allow-env --target x86_64-pc-windows-msvc --output dist/dinosonic-win-x86.exe src/main.ts"
+    },
+    "unstable": [
+        "kv"
+    ],
+    "fmt": {
+        "proseWrap": "preserve",
+        "lineWidth": 150,
+        "indentWidth": 4,
+        "singleQuote": true
+    },
+    "imports": {
+        "deno_image": "https://deno.land/x/deno_image/mod.ts",
+        "walk": "https://deno.land/std/fs/walk.ts",
+        "parse-args": "jsr:@std/cli/parse-args",
+        "zod": "https://deno.land/x/zod/mod.ts",
+        "music-metadata": "npm:music-metadata",
+        "colors": "jsr:@std/fmt/colors",
+        "hex": "jsr:@std/encoding/hex",
+        "hono": "jsr:@hono/hono",
+        "md5": "jsr:@takker/md5",
+        "path": "jsr:@std/path",
+        "toml": "jsr:@std/toml",
+        "xml": "jsr:@libs/xml",
+        "fuzzy": "npm:fuzzy",
+        "log": "jsr:@std/log"
+    }
 }
