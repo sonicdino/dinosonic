@@ -1,57 +1,52 @@
-name: Build and Release Dinosonic
-
-on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Version (e.g., 1.0.0)"
-        required: true
-
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        platform: [linux, linuxarm, mac, macarm, windows]
-        include:
-          - platform: linux
-            file_ext: tar.gz
-            artifact: dinosonic-linux-x86_64.tar.gz
-          - platform: linuxarm
-            file_ext: tar.gz
-            artifact: dinosonic-linux-arm64.tar.gz
-          - platform: mac
-            file_ext: tar.gz
-            artifact: dinosonic-mac-x86_64.tar.gz
-          - platform: macarm
-            file_ext: tar.gz
-            artifact: dinosonic-mac-arm64.tar.gz
-          - platform: windows
-            file_ext: zip
-            artifact: dinosonic-windows-x86_64.zip
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Latest Deno
+      - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
           deno-version: latest
 
-      - name: Run Build Task
-        run: deno task build:${{ matrix.platform }}
-
-      - name: Package Binary
+      - name: Run Deno Build Tasks
         run: |
-          if [ "${{ matrix.file_ext }}" == "zip" ]; then
-            zip ${{ matrix.artifact }} dist/dinosonic.exe
-          else
-            tar -czvf ${{ matrix.artifact }} -C dist dinosonic
-          fi
+          deno task build:linux
+          deno task build:linuxarm
+          deno task build:mac
+          deno task build:macarm
+          deno task build:windows
 
-      - name: Upload Release Asset
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dinosonic-binaries
+          path: |
+            dist/dinosonic-linux-x86
+            dist/dinosonic-linux-aarch64
+            dist/dinosonic-mac-x86
+            dist/dinosonic-mac-aarch64
+            dist/dinosonic-win-x86.exe
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dinosonic-binaries
+          path: dist/
+
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.version }}
-          files: ${{ matrix.artifact }}
+          files: |
+            dist/dinosonic-linux-x86
+            dist/dinosonic-linux-aarch64
+            dist/dinosonic-mac-x86
+            dist/dinosonic-mac-aarch64
+            dist/dinosonic-win-x86.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
