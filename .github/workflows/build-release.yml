@@ -77,9 +77,10 @@ jobs:
           allowUpdates: true
           artifacts: "./dist/dinosonic-linux-x86, ./dist/dinosonic-linux-aarch64, ./dist/dinosonic-mac-x86, ./dist/dinosonic-mac-aarch64, ./dist/dinosonic-win-x86.exe"
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ format('v{0}',inputs.version) }}
+          tag: ${{ format('v{0}', github.event.inputs.version) }}
           commit: ${{ github.sha }}
-          draft: ${{ inputs.is_draft }}
+          draft: ${{ github.event.inputs.is_draft }}
           artifactErrorsFailBuild: true
-          name: ${{ format('v{0}',inputs.tag) }}
-          makeLatest: ${{ inputs.is_latest }}
+          name: ${{ format('v{0}', github.event.inputs.version) }}
+          bodyFile: .github/changelog.md
+          makeLatest: ${{ github.event.inputs.is_latest }}
