@@ -4,16 +4,33 @@ on:
   workflow_dispatch:
     inputs:
       release_type:
-        description: 'Release Type (prerelease/release)'
+        description: "Release Type (prerelease/release)"
         required: true
-        default: 'prerelease'
+        default: "prerelease"
         type: choice
         options:
           - prerelease
           - release
       version:
-        description: 'Version for the release (e.g., 1.2.3)'
+        description: "Version for the release (e.g., 1.2.3)"
+        default: "1.x.x"
         required: true
+      is_latest:
+        description: "Set the release as latest"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - true
+          - false
+      is_draft:
+        description: "Set the release as a draft"
+        required: true
+        type: choice
+        default: "true"
+        options:
+          - true
+          - false
 
 jobs:
   build:
@@ -45,45 +62,25 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Checkout into repo
+        uses: actions/checkout@v3
 
-      - name: Download Artifacts
+      - name: Download all binaries
         uses: actions/download-artifact@v4
         with:
           name: dinosonic-binaries
           path: dist/
 
-      - name: Set Release Variables
-        run: |
-          if [ "${{ github.event.inputs.release_type }}" == "prerelease" ]; then
-            echo "RELEASE_NAME=dinosonic-${{ github.event.inputs.version }}-prerelease" >> $GITHUB_ENV
-            echo "TAG=v${{ github.event.inputs.version }}-prerelease" >> $GITHUB_ENV
-            echo "IS_PRERELEASE=true" >> $GITHUB_ENV
-          else
-            echo "RELEASE_NAME=dinosonic-${{ github.event.inputs.version }}" >> $GITHUB_ENV
-            echo "TAG=v${{ github.event.inputs.version }}" >> $GITHUB_ENV
-            echo "IS_PRERELEASE=false" >> $GITHUB_ENV
-          fi
-
-      - name: Create Tag
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git tag $TAG
-          git push https://x-access-token:${{ secrets.GH_PAT }}@github.com/${{ github.repository }}.git $TAG
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload binaries to GitHub Release
+        uses: ncipollo/release-action@v1
         with:
-          tag_name: ${{ env.TAG }}
-          name: ${{ env.RELEASE_NAME }}
-          prerelease: ${{ env.IS_PRERELEASE }}
-          files: |
-            dist/dinosonic-linux-x86
-            dist/dinosonic-linux-aarch64
-            dist/dinosonic-mac-x86
-            dist/dinosonic-mac-aarch64
-            dist/dinosonic-win-x86.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
+          artifacts: "./dist/dinosonic-linux-x86, ./dist/dinosonic-linux-aarch64, ./dist/dinosonic-mac-x86, ./dist/dinosonic-mac-aarch64, ./dist/dinosonic-win-x86.exe"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ format('v{0}',inputs.version) }}
+          commit: ${{ github.sha }}
+          draft: ${{ inputs.is_draft }}
+          artifactErrorsFailBuild: true
+          name: ${{ format('v{0}',inputs.tag) }}
+          bodyFile: .github/changelog.md
+          makeLatest: ${{ inputs.is_latest }}
