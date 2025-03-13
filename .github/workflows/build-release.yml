@@ -82,5 +82,4 @@ jobs:
           draft: ${{ inputs.is_draft }}
           artifactErrorsFailBuild: true
           name: ${{ format('v{0}',inputs.tag) }}
-          bodyFile: .github/changelog.md
           makeLatest: ${{ inputs.is_latest }}
