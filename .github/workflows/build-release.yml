@@ -74,5 +74,4 @@ jobs:
           draft: ${{ github.event.inputs.is_draft }}
           artifactErrorsFailBuild: true
           name: ${{ format('v{0}', github.event.inputs.version) }}
-          bodyFile: .github/changelog.md
           makeLatest: ${{ github.event.inputs.is_latest }}
