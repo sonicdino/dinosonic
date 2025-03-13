@@ -1,72 +1,65 @@
 import { Context, Hono } from 'hono';
 import { createResponse, database, logger, separatorsToRegex, validateAuth } from '../../util.ts';
-import { Song, StructuredLyrics } from '../../zod.ts';
+import { Song } from '../../zod.ts';
 
-const getLyrics = new Hono();
+const getLyricsBySongId = new Hono();
+// TODO: Integrade Separators.
 const PLACEHOLDER_SEPARATORS = [';', '/'];
 const separators = PLACEHOLDER_SEPARATORS;
 
-async function handlegetLyrics(c: Context) {
+function timeToMs(timestamp: string): number {
+    const match = timestamp.match(/(\d+):(\d+)[.:](\d+)/);
+    if (!match) return 0;
+    const [, minutes, seconds, milliseconds] = match.map(Number);
+    return (minutes * 60 + seconds) * 1000 + milliseconds;
+}
+
+async function handlegetLyricsBySongId(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
 
-    const artist = c.req.query('artist') || '';
-    const title = c.req.query('title') || '';
+    const id = c.req.query('id');
+    if (!id) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });
+    const track = (await database.get(['tracks', id])).value as Song | null;
+    if (!track) return createResponse(c, {}, 'failed', { code: 70, message: 'Song not found' });
+    if (track.backend.lyrics) return createResponse(c, { lyricsList: { structuredLyrics: track.backend.lyrics } }, 'ok');
 
-    if (!title) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'title'" });
-    if (!artist) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'artist'" });
+    const lyrics = await fetchLyrics(track.subsonic.title, track.subsonic.artist);
+    if (!lyrics) return createResponse(c, {}, 'ok');
 
-    const track: Song | undefined = (await Array.fromAsync(database.list({ prefix: ['tracks'] }))).map((track) => track.value as Song).find((track) =>
-        (track as Song).subsonic.title.toLowerCase().trim() === title.toLowerCase().trim() &&
-        (track as Song).subsonic.artist.toLowerCase().trim() === artist.toLowerCase().trim()
-    );
-    if (track) {
-        console.log(track);
-        return createResponse(c, {
-            lyrics: {
-                artist: track.subsonic.artist,
-                title: track.subsonic.title,
-                value: convertToLRC(track.backend.lyrics),
-            },
-        });
-    }
+    const lines = lyrics.split('\n').filter((line) => line.trim());
+    const offset = parseInt(lines.find((line) => line.startsWith('[offset:'))?.match(/-?\d+/)?.[0] || '0');
 
-    const lyrics = await fetchLyrics(title, artist);
+    const Lyrics = lines
+        .filter((line) => line.match(/^\[\d+:\d+\.\d+]/))
+        .map((line) => {
+            const match = line.match(/^\[(\d+:\d+\.\d+)](.*)/);
+            return match ? { start: timeToMs(match[1]) + offset, value: match[2].trim() } : null;
+        })
+        .filter((item) => item !== null);
+
+    const structuredLyrics = [
+        {
+            displayArtist: track.subsonic.artist,
+            displayTitle: track.subsonic.title,
+            lang: 'xxx',
+            offset: Number(offset),
+            synced: true,
+            line: Lyrics,
+        },
+        {
+            displayArtist: track.subsonic.artist,
+            displayTitle: track.subsonic.title,
+            lang: 'xxx',
+            offset: 100,
+            synced: false,
+            line: Lyrics.map(({ value }) => ({ value })),
+        },
+    ];
 
     return createResponse(c, {
-        lyrics: {
-            artist,
-            title,
-            value: lyrics,
-        },
+        lyricsList: { structuredLyrics },
     }, 'ok');
-}
-
-function convertToLRC(lyrics: StructuredLyrics[]) {
-    const syncedLyrics = lyrics.find((lyric: StructuredLyrics) => lyric.synced);
-    const unsyncedLyrics = lyrics.find((lyric: StructuredLyrics) => !lyric.synced);
-
-    let lrcContent = '';
-
-    if (syncedLyrics) {
-        syncedLyrics.line.forEach((line) => {
-            if (line.start !== undefined) {
-                const minutes = String(Math.floor(line.start / 60000)).padStart(2, '0');
-                const seconds = String(((line.start % 60000) / 1000).toFixed(2)).padStart(5, '0');
-                lrcContent += `[${minutes}:${seconds}]${line.value}\n`;
-            } else {
-                lrcContent += `${line.value}\n`;
-            }
-        });
-    }
-
-    if (unsyncedLyrics) {
-        unsyncedLyrics.line.forEach((line) => {
-            lrcContent += `${line.value}\n`;
-        });
-    }
-
-    return lrcContent.trim();
 }
 
 // TODO: Debug logging
@@ -146,9 +139,9 @@ async function fetchLyrics(trackName: string, artistName: string): Promise<strin
     return null;
 }
 
-getLyrics.get('/getLyrics', handlegetLyrics);
-getLyrics.post('/getLyrics', handlegetLyrics);
-getLyrics.get('/getLyrics.view', handlegetLyrics);
-getLyrics.post('/getLyrics.view', handlegetLyrics);
+getLyricsBySongId.get('/getLyricsBySongId', handlegetLyricsBySongId);
+getLyricsBySongId.post('/getLyricsBySongId', handlegetLyricsBySongId);
+getLyricsBySongId.get('/getLyricsBySongId.view', handlegetLyricsBySongId);
+getLyricsBySongId.post('/getLyricsBySongId.view', handlegetLyricsBySongId);
 
-export default getLyrics;
+export default getLyricsBySongId;

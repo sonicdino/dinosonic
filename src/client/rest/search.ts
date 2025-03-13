@@ -1,7 +1,7 @@
 import { Context, Hono } from 'hono';
 import fuzzy from 'fuzzy';
-import { createResponse, database, ERROR_MESSAGES, validateAuth } from '../../util.ts';
-import { AlbumID3, ArtistID3, Song } from '../../zod.ts';
+import { createResponse, database, validateAuth } from '../../util.ts';
+import { Album, Artist, Song, userData } from '../../zod.ts';
 
 const search = new Hono();
 
@@ -9,8 +9,7 @@ async function handlesearch(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
 
-    const path = c.req.path;
-    const query = c.req.query('query') || '';
+    const query = (c.req.query('query') || '').replace(/[`'"]/g, '').trim();
     const artistCount = parseInt(c.req.query('artistCount') || '20');
     let artistOffset = parseInt(c.req.query('artistOffset') || '0');
     const albumCount = parseInt(c.req.query('albumCount') || '20');
@@ -19,22 +18,26 @@ async function handlesearch(c: Context) {
     let songOffset = parseInt(c.req.query('songOffset') || '0');
     // const musicFolderId = c.req.query("musicFolderId") || "";
 
-    const objectName = /(search|search2)$/.test(path) ? 'searchResult2' : 'searchResult3';
     const artist = [];
     const album = [];
     const song = [];
-
-    if (!query) return createResponse(c, {}, 'failed', { code: 10, message: ERROR_MESSAGES[10] });
 
     if (artistCount) {
         const maxOffset = (await database.get(['counters', 'A'])).value as number;
         artistOffset = Math.min(artistOffset, maxOffset);
         const Artists = await Array.fromAsync(database.list({ prefix: ['artists'] }));
-        const results = fuzzy.filter(query, Artists, { extract: (artist) => (artist.value as ArtistID3).name });
+        let filteredArtists;
         const artists = [];
         let skipped = 0;
 
-        for (const entry of results) {
+        if (query.length) {
+            const results = fuzzy.filter(query, Artists, { extract: (artist) => (artist.value as Artist).artist.name });
+            filteredArtists = results.map((result) => result.original);
+        } else {
+            filteredArtists = Artists;
+        }
+
+        for (const entry of filteredArtists) {
             if (skipped < artistOffset) {
                 skipped++;
                 continue; // Skip items until offset is reached
@@ -44,10 +47,17 @@ async function handlesearch(c: Context) {
         }
 
         for (const result of artists) {
-            const Artist = result.original.value as ArtistID3;
+            const Artist = result.value as Artist;
+
+            const userData = (await database.get(['userData', isValidated.username, 'artist', Artist.artist.id])).value as userData | undefined;
+            if (userData) {
+                if (userData.starred) Artist.artist.starred = userData.starred.toISOString();
+                if (userData.userRating) Artist.artist.userRating = userData.userRating;
+            }
+
             // @ts-expect-error A weird error with Deno type checking i guess.
-            delete Artist.album;
-            artist.push(Artist);
+            delete Artist.artist.album;
+            artist.push(Artist.artist);
         }
     }
 
@@ -55,21 +65,39 @@ async function handlesearch(c: Context) {
         const maxOffset = (await database.get(['counters', 'a'])).value as number;
         albumOffset = Math.min(albumOffset, maxOffset);
         const Albums = await Array.fromAsync(database.list({ prefix: ['albums'] }));
-        const results = fuzzy.filter(query, Albums, { extract: (album) => (album.value as AlbumID3).name });
+        let filteredAlbums;
         const albums = [];
         let skipped = 0;
 
-        for (const entry of results) {
+        if (query.length) {
+            const results = fuzzy.filter(query, Albums, {
+                extract: (album) => `${(album.value as Album).subsonic.artist} ${(album.value as Album).subsonic.name}`,
+            });
+            filteredAlbums = results.map((result) => result.original);
+        } else {
+            filteredAlbums = Albums;
+        }
+
+        for (const entry of filteredAlbums) {
             if (skipped < albumOffset) {
                 skipped++;
                 continue; // Skip items until offset is reached
             }
             albums.push(entry);
-            if (albums.length >= artistCount) break; // Stop after collecting `limit` items
+            if (albums.length >= albumCount) break; // Stop after collecting `limit` items
         }
 
         for (const result of albums) {
-            const Album = result.original.value as AlbumID3;
+            const Album = (result.value as Album).subsonic;
+
+            const userData = (await database.get(['userData', isValidated.username, 'album', Album.id])).value as userData | undefined;
+            if (userData) {
+                if (userData.starred) Album.starred = userData.starred.toISOString();
+                if (userData.played) Album.played = userData.played.toISOString();
+                if (userData.playCount) Album.playCount = userData.playCount;
+                if (userData.userRating) Album.userRating = userData.userRating;
+            }
+
             // @ts-expect-error A weird error with Deno type checking i guess.
             delete Album.song;
             album.push(Album);
@@ -80,29 +108,45 @@ async function handlesearch(c: Context) {
         const maxOffset = (await database.get(['counters', 't'])).value as number;
         songOffset = Math.min(songOffset, maxOffset);
         const Songs = await Array.fromAsync(database.list({ prefix: ['tracks'] }));
-        const results = fuzzy.filter(query, Songs, {
-            extract: (song) =>
-                `${(song.value as Song).subsonic.artist} ${(song.value as Song).subsonic.album} ${(song.value as Song).subsonic.title}`,
-        });
+        let filteredSongs = [];
         const songs = [];
         let skipped = 0;
 
-        for (const entry of results) {
+        if (query.length) {
+            const results = fuzzy.filter(query, Songs, {
+                extract: (song) =>
+                    `${(song.value as Song).subsonic.artist} ${(song.value as Song).subsonic.album} ${(song.value as Song).subsonic.title}`,
+            });
+            filteredSongs = results.map((result) => result.original);
+        } else {
+            filteredSongs = Songs;
+        }
+
+        for (const entry of filteredSongs) {
             if (skipped < songOffset) {
                 skipped++;
                 continue; // Skip items until offset is reached
             }
             songs.push(entry);
-            if (songs.length >= artistCount) break; // Stop after collecting `limit` items
+            if (songs.length >= songCount) break; // Stop after collecting `limit` items
         }
 
         for (const result of songs) {
-            song.push((result.original.value as Song).subsonic);
+            const track = result.value as Song;
+            const userData = (await database.get(['userData', isValidated.username, 'track', track.subsonic.id])).value as userData | undefined;
+            if (userData) {
+                if (userData.starred) track.subsonic.starred = userData.starred.toISOString();
+                if (userData.played) track.subsonic.played = userData.played.toISOString();
+                if (userData.playCount) track.subsonic.playCount = userData.playCount;
+                if (userData.userRating) track.subsonic.userRating = userData.userRating;
+            }
+
+            song.push(track.subsonic);
         }
     }
 
     return createResponse(c, {
-        [objectName]: {
+        [/(search|search2)$/.test(c.req.path) ? 'searchResult2' : 'searchResult3']: {
             artist,
             album,
             song,

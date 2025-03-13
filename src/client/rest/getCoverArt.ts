@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, ERROR_MESSAGES, validateAuth } from '../../util.ts';
+import { createResponse, database, validateAuth } from '../../util.ts';
 import { resize } from 'deno_image';
 import { CoverArt } from '../../zod.ts';
 
@@ -12,10 +12,10 @@ async function handlegetCoverArt(c: Context) {
     const id = c.req.query('id');
     const size = parseInt(c.req.query('size') || '0');
 
-    if (!id) return createResponse(c, {}, 'failed', { code: 10, message: ERROR_MESSAGES[10] });
+    if (!id) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });
 
     const Cover = (await database.get(['covers', id])).value as CoverArt | undefined;
-    if (!Cover) return createResponse(c, {}, 'failed', { code: 70, message: ERROR_MESSAGES[70] });
+    if (!Cover) return createResponse(c, {}, 'failed', { code: 70, message: 'Cover not found' });
     let cover: Uint8Array = await Deno.readFile(Cover.path);
 
     if (size) {

@@ -1,6 +1,6 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, ERROR_MESSAGES, validateAuth } from '../../util.ts';
-import { AlbumID3, Song, userData } from '../../zod.ts';
+import { createResponse, database, validateAuth } from '../../util.ts';
+import { Album, Song, SongID3, userData } from '../../zod.ts';
 
 const getAlbum = new Hono();
 
@@ -10,9 +10,10 @@ async function handlegetAlbum(c: Context) {
 
     const albumId = c.req.query('id') || '';
 
-    if (!albumId) return createResponse(c, {}, 'failed', { code: 10, message: ERROR_MESSAGES[10] });
-    const album = (await database.get(['albums', albumId])).value as AlbumID3 | undefined;
-    if (!album) return createResponse(c, {}, 'failed', { code: 70, message: ERROR_MESSAGES[70] });
+    if (!albumId) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });
+    const Album = (await database.get(['albums', albumId])).value as Album | undefined;
+    if (!Album) return createResponse(c, {}, 'failed', { code: 70, message: 'Album not found' });
+    const album = Album.subsonic;
 
     const userData = (await database.get(['userData', isValidated.username, 'album', albumId])).value as userData | undefined;
     if (userData) {
@@ -24,7 +25,7 @@ async function handlegetAlbum(c: Context) {
 
     for (let i = 0; i < album.song.length; i++) {
         const track = (await database.get(['tracks', album.song[i] as string])).value as Song | undefined;
-        if (!track) return createResponse(c, {}, 'failed', { code: 0, message: ERROR_MESSAGES[0] });
+        if (!track) return createResponse(c, {}, 'failed', { code: 70, message: 'Album song not found' });
 
         const userData = (await database.get(['userData', isValidated.username, 'track', track.subsonic.id])).value as userData | undefined;
         if (userData) {
@@ -33,8 +34,17 @@ async function handlegetAlbum(c: Context) {
             if (userData.playCount) track.subsonic.playCount = userData.playCount;
             if (userData.userRating) track.subsonic.userRating = userData.userRating;
         }
-        // @ts-expect-error This expect error will most likely be left on, but it will stay in here.
         album.song[i] = track.subsonic;
+    }
+
+    if (album.song.length) {
+        album.song = (album.song as SongID3[]).sort((a, b) => {
+            if (a.discNumber && b.discNumber && a.discNumber !== b.discNumber) {
+                return a.discNumber - b.discNumber;
+            }
+
+            return (a.track || 0) - (b.track || 0);
+        });
     }
 
     return createResponse(c, {

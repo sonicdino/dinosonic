@@ -1,6 +1,6 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, ERROR_MESSAGES, validateAuth } from '../../util.ts';
-import { AlbumID3, ArtistID3, userData } from '../../zod.ts';
+import { createResponse, database, validateAuth } from '../../util.ts';
+import { Album, AlbumID3, Artist, userData } from '../../zod.ts';
 
 const getArtist = new Hono();
 
@@ -10,19 +10,20 @@ async function handlegetArtist(c: Context) {
 
     const artistId = c.req.query('id') || '';
 
-    if (!artistId) return createResponse(c, {}, 'failed', { code: 10, message: ERROR_MESSAGES[10] });
-    const artist = (await database.get(['artists', artistId])).value as ArtistID3 | undefined;
-    if (!artist) return createResponse(c, {}, 'failed', { code: 70, message: ERROR_MESSAGES[70] });
+    if (!artistId) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });
+    const Artist = (await database.get(['artists', artistId])).value as Artist | undefined;
+    if (!Artist) return createResponse(c, {}, 'failed', { code: 70, message: 'Artist not found' });
 
     const userData = (await database.get(['userData', isValidated.username, 'artist', artistId])).value as userData | undefined;
     if (userData) {
-        if (userData.starred) artist.starred = userData.starred.toISOString();
-        if (userData.userRating) artist.userRating = userData.userRating;
+        if (userData.starred) Artist.artist.starred = userData.starred.toISOString();
+        if (userData.userRating) Artist.artist.userRating = userData.userRating;
     }
 
-    for (let i = 0; i < artist.album.length; i++) {
-        const album = (await database.get(['albums', artist.album[i] as string])).value as AlbumID3 | undefined;
-        if (!album) return createResponse(c, {}, 'failed', { code: 0, message: ERROR_MESSAGES[0] });
+    for (let i = 0; i < Artist.artist.album.length; i++) {
+        const Album = (await database.get(['albums', Artist.artist.album[i] as string])).value as Album | undefined;
+        if (!Album) return createResponse(c, {}, 'failed', { code: 0, message: 'Artist album not found' });
+        const album = Album.subsonic;
         // @ts-expect-error A weird error with Deno type checking i guess.
         delete album.song;
 
@@ -33,11 +34,19 @@ async function handlegetArtist(c: Context) {
             if (userData.playCount) album.playCount = userData.playCount;
             if (userData.userRating) album.userRating = userData.userRating;
         }
-        artist.album[i] = album;
+        Artist.artist.album[i] = album;
+    }
+
+    if (Artist.artist.album.length) {
+        Artist.artist.album = (Artist.artist.album as AlbumID3[]).sort((a, b) => {
+            const numA = parseInt(a.id.slice(1)); // Extract number from "a1", "a2", etc.
+            const numB = parseInt(b.id.slice(1));
+            return numA - numB;
+        });
     }
 
     return createResponse(c, {
-        artist,
+        artist: Artist.artist,
     }, 'ok');
 }
 

@@ -1,7 +1,7 @@
-import { Config, ConfigSchema, SubsonicUserSchema } from './zod.ts';
+import { Config, ConfigSchema, nowPlaying, SubsonicUserSchema } from './zod.ts';
 import { scanMediaDirectories } from './MediaScanner.ts';
 import { parseArgs } from 'parse-args';
-import { logger, SERVER_VERSION, setDatabase, setupLogger } from './util.ts';
+import { logger, SERVER_VERSION, setConstants, setupLogger } from './util.ts';
 import restRoutes from './client/rest/index.ts';
 // import apiRoutes from "./client/api/index.ts";
 import { Context, Hono, Next } from 'hono';
@@ -93,10 +93,28 @@ if (!config.default_admin_password.length) throw new Error('Default admin passwo
 await setupLogger(config.log_level);
 
 const database = await Deno.openKv(path.join(config.data_folder as string, 'dinosonic.db'));
-setDatabase(database);
+setConstants(database, config);
+
+async function cleanupNowPlaying() {
+    const allNowPlaying = await database.list({ prefix: ['nowPlaying'] });
+
+    for await (const entry of allNowPlaying) {
+        const item = entry.value as nowPlaying;
+        const minutesAgo = Math.floor((Date.now() - item.minutesAgo.getTime()) / (1000 * 60));
+        // If, it has been 10 minutes since it was set, delete.
+        if (minutesAgo > 10) {
+            await database.delete(entry.key);
+            logger.info(`Removed stale nowPlaying entry for ${item.username}`);
+        }
+    }
+}
+
+// TODO: Use cron maybe.
+setInterval(cleanupNowPlaying, 60 * 100);
+cleanupNowPlaying();
 
 if (!(await database.get(['users', 'admin'])).value) {
-    // TODO: add Logging.
+    // TODO: add Logging. Also not to store password as plainText.
     await database.set(['users', 'admin'], {
         backend: {
             username: 'admin',
@@ -116,7 +134,7 @@ if (!(await database.get(['users', 'admin'])).value) {
 
 if (config.scan_on_start) {
     logger.info('Starting media scan...');
-    scanMediaDirectories(database, config.music_folders, config);
+    scanMediaDirectories(database, config.music_folders);
 }
 
 logger.info('🚀 Starting Dinosonic server...');
@@ -126,7 +144,7 @@ app.use('*', async (c: Context, next: Next) => {
     const start = Date.now();
     await next();
     const duration = Date.now() - start;
-    logger.debug(`[${c.req.method}] ${c.req.url} - ${duration}ms`);
+    logger.debug(`[${c.req.method} (${c.res.status})] ${c.req.url} - ${duration}ms`);
 });
 
 // app.route("/admin", adminRoutes);
@@ -135,7 +153,6 @@ app.route('/rest', restRoutes);
 
 app.get('/', (c: Context) => c.text('Dinosonic Subsonic Server is running!'));
 
-// Start the server on the configured port
 const port = config.port ?? 4100;
 Deno.serve({ port, hostname: '0.0.0.0' }, app.fetch);
 

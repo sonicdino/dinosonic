@@ -3,8 +3,16 @@ name: Build and Release Dinosonic
 on:
   workflow_dispatch:
     inputs:
+      release_type:
+        description: 'Release Type (prerelease/release)'
+        required: true
+        default: 'prerelease'
+        type: choice
+        options:
+          - prerelease
+          - release
       version:
-        description: "Version (e.g., 1.0.0)"
+        description: 'Version for the release (e.g., 1.2.3)'
         required: true
 
 jobs:
@@ -19,7 +27,7 @@ jobs:
         with:
           deno-version: latest
 
-      - name: Run Deno Build Tasks
+      - name: Run Build
         run: |
           deno task build:linux
           deno task build:linuxarm
@@ -31,27 +39,46 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dinosonic-binaries
-          path: |
-            dist/dinosonic-linux-x86
-            dist/dinosonic-linux-aarch64
-            dist/dinosonic-mac-x86
-            dist/dinosonic-mac-aarch64
-            dist/dinosonic-win-x86.exe
+          path: dist/
 
   release:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
           name: dinosonic-binaries
           path: dist/
 
-      - name: Create Release
+      - name: Set Release Variables
+        run: |
+          if [ "${{ github.event.inputs.release_type }}" == "prerelease" ]; then
+            echo "RELEASE_NAME=dinosonic-${{ github.event.inputs.version }}-prerelease" >> $GITHUB_ENV
+            echo "TAG=v${{ github.event.inputs.version }}-prerelease" >> $GITHUB_ENV
+            echo "IS_PRERELEASE=true" >> $GITHUB_ENV
+          else
+            echo "RELEASE_NAME=dinosonic-${{ github.event.inputs.version }}" >> $GITHUB_ENV
+            echo "TAG=v${{ github.event.inputs.version }}" >> $GITHUB_ENV
+            echo "IS_PRERELEASE=false" >> $GITHUB_ENV
+          fi
+
+      - name: Create Tag
+        run: |
+          git tag $TAG
+          git push origin $TAG
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.version }}
+          tag_name: ${{ env.TAG }}
+          name: ${{ env.RELEASE_NAME }}
+          prerelease: ${{ env.IS_PRERELEASE }}
           files: |
             dist/dinosonic-linux-x86
             dist/dinosonic-linux-aarch64

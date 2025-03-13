@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, ERROR_MESSAGES, validateAuth } from '../../util.ts';
+import { createResponse, database, validateAuth } from '../../util.ts';
 import { Song, userData } from '../../zod.ts';
 
 const getSong = new Hono();
@@ -10,9 +10,9 @@ async function handlegetSong(c: Context) {
 
     const trackId = c.req.query('id') || '';
 
-    if (!trackId) return createResponse(c, {}, 'failed', { code: 10, message: ERROR_MESSAGES[10] });
+    if (!trackId) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });
     const song = (await database.get(['tracks', trackId])).value as Song | undefined;
-    if (!song) return createResponse(c, {}, 'failed', { code: 70, message: ERROR_MESSAGES[70] });
+    if (!song) return createResponse(c, {}, 'failed', { code: 70, message: 'Song not found' });
 
     const userData = (await database.get(['userData', isValidated.username, 'track', trackId])).value as userData | undefined;
     if (userData) {

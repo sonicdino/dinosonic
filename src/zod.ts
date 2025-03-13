@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const userDataSchema = z.object({
+    id: z.string(),
     starred: z.date().optional(),
     played: z.date().optional(),
     playCount: z.number().optional(),
@@ -75,63 +76,75 @@ export const AlbumID3ArtistsSchema = z.object({
     name: z.string(),
 });
 
+export const StructuredLyricsSchema = z.object({
+    displayArtist: z.string(),
+    displayTitle: z.string(),
+    lang: z.string().default('xxx'),
+    offset: z.number().optional(),
+    synced: z.boolean().default(false),
+    line: z.array(z.object({ start: z.number().optional(), value: z.string() })),
+});
+
+export const SongID3Schema = z.object({
+    id: z.string(),
+    parent: z.string().optional(),
+    isDir: z.boolean().default(false),
+    title: z.string(),
+    album: z.string().optional(),
+    artist: z.string(),
+    track: z.number().optional(),
+    year: z.number().optional(),
+    genre: z.string().optional(),
+    coverArt: z.string().optional(),
+    size: z.number().optional(),
+    contentType: z.string().optional(),
+    suffix: z.string().optional(),
+    transcodedContentType: z.string().optional(),
+    transcodedSuffix: z.string().optional(),
+    duration: z.number(),
+    bitRate: z.number().optional(),
+    bitDepth: z.number().optional(),
+    samplingRate: z.number().optional(),
+    channelCount: z.number().optional(),
+    path: z.string(),
+    isVideo: z.boolean().optional(),
+    userRating: z.number().min(1).max(5).optional(),
+    averageRating: z.number().min(1.0).max(5.0).optional(),
+    playCount: z.number().optional(),
+    discNumber: z.number().default(0),
+    created: z.string().optional(),
+    starred: z.string().optional(),
+    albumId: z.string().optional(),
+    artistId: z.string().optional(),
+    type: z.string().optional(),
+    mediaType: z.string().optional(),
+    bookmarkPosition: z.number().optional(),
+    originalWidth: z.number().optional(),
+    originalHeight: z.number().optional(),
+    played: z.string().optional(),
+    bpm: z.number().optional(),
+    comment: z.string().optional(),
+    sortName: z.string().optional(),
+    musicBrainzId: z.string().optional(),
+    genres: z.array(GenreSchema).optional(),
+    artists: z.array(AlbumID3ArtistsSchema).default([]),
+    displayArtist: z.string().optional(),
+    albumArtists: z.array(AlbumID3ArtistsSchema).default([]),
+    displayAlbumArtist: z.string().optional(),
+    contributors: z.array(ContributorSchema).optional(),
+    displayComposer: z.string().optional(),
+    moods: z.array(z.string()).optional(),
+    replayGain: ReplayGainSchema.optional(),
+    explicitStatus: z.enum(['explicit', 'clean', '']).optional(),
+});
+
 export const SongSchema = z.object({
     backend: z.object({
         lastModified: z.number(),
         lastFM: z.boolean().default(false),
+        lyrics: z.array(StructuredLyricsSchema).default([]),
     }),
-    subsonic: z.object({
-        id: z.string(),
-        parent: z.string().optional(),
-        isDir: z.boolean().default(false),
-        title: z.string(),
-        album: z.string().optional(),
-        artist: z.string().optional(),
-        track: z.number().optional(),
-        year: z.number().optional(),
-        genre: z.string().optional(),
-        coverArt: z.string().optional(),
-        size: z.number().optional(),
-        contentType: z.string().optional(),
-        suffix: z.string().optional(),
-        transcodedContentType: z.string().optional(),
-        transcodedSuffix: z.string().optional(),
-        duration: z.number().optional(),
-        bitRate: z.number().optional(),
-        bitDepth: z.number().optional(),
-        samplingRate: z.number().optional(),
-        channelCount: z.number().optional(),
-        path: z.string(),
-        isVideo: z.boolean().optional(),
-        userRating: z.number().min(1).max(5).optional(),
-        averageRating: z.number().min(1.0).max(5.0).optional(),
-        playCount: z.number().optional(),
-        discNumber: z.number().optional(),
-        created: z.string().optional(),
-        starred: z.string().optional(),
-        albumId: z.string().optional(),
-        artistId: z.string().optional(),
-        type: z.string().optional(),
-        mediaType: z.string().optional(),
-        bookmarkPosition: z.number().optional(),
-        originalWidth: z.number().optional(),
-        originalHeight: z.number().optional(),
-        played: z.string().optional(),
-        bpm: z.number().optional(),
-        comment: z.string().optional(),
-        sortName: z.string().optional(),
-        musicBrainzId: z.string().optional(),
-        genres: z.array(GenreSchema).optional(),
-        artists: z.array(AlbumID3ArtistsSchema).optional(),
-        displayArtist: z.string().optional(),
-        albumArtists: z.array(AlbumID3ArtistsSchema).optional(),
-        displayAlbumArtist: z.string().optional(),
-        contributors: z.array(ContributorSchema).optional(),
-        displayComposer: z.string().optional(),
-        moods: z.array(z.string()).optional(),
-        replayGain: ReplayGainSchema.optional(),
-        explicitStatus: z.enum(['explicit', 'clean', '']).optional(),
-    }),
+    subsonic: SongID3Schema,
 });
 
 export const AlbumID3Schema = z.object({
@@ -152,7 +165,7 @@ export const AlbumID3Schema = z.object({
     recordLabels: z.array(RecordLabelSchema).optional(),
     musicBrainzId: z.string().optional(),
     genres: z.array(GenreSchema).optional(),
-    artists: z.array(AlbumID3ArtistsSchema).optional(),
+    artists: z.array(AlbumID3ArtistsSchema).default([]),
     displayArtist: z.string().optional(),
     releaseTypes: z.array(z.string()).optional(),
     moods: z.array(z.string()).optional(),
@@ -162,7 +175,24 @@ export const AlbumID3Schema = z.object({
     isCompilation: z.boolean().optional(),
     explicitStatus: z.string().optional(),
     discTitles: z.array(DiscTitlesSchema).default([]),
-    song: z.array(z.string().or(SongSchema)).default([]),
+    song: z.array(z.string().or(SongSchema).or(SongID3Schema)).default([]),
+});
+
+export const AlbumInfoSchema = z.object({
+    notes: z.string().optional(),
+    musicBrainzId: z.string().optional(),
+    lastFmUrl: z.string().optional(),
+    smallImageUrl: z.string().optional(),
+    mediumImageUrl: z.string().optional(),
+    largeImageUrl: z.string().optional(),
+});
+
+export const AlbumSchema = z.object({
+    backend: z.object({
+        dateAdded: z.number(),
+    }),
+    albumInfo: AlbumInfoSchema.optional(),
+    subsonic: AlbumID3Schema,
 });
 
 export const ArtistID3Schema = z.object({
@@ -170,13 +200,29 @@ export const ArtistID3Schema = z.object({
     name: z.string(),
     coverArt: z.string().optional(),
     artistImageUrl: z.string().optional(),
-    albumCount: z.number().optional(),
+    albumCount: z.number().default(0),
     starred: z.string().optional(),
     userRating: z.number().optional(),
     musicBrainzId: z.string().optional(),
     sortName: z.string().optional(),
     roles: z.array(z.string()).optional(),
     album: z.array(z.string().or(AlbumID3Schema)).default([]),
+});
+
+export const ArtistInfoSchema = z.object({
+    id: z.string(),
+    biography: z.string().optional(),
+    musicBrainzId: z.string().optional(),
+    lastFmUrl: z.string().optional(),
+    smallImageUrl: z.string().optional(),
+    mediumImageUrl: z.string().optional(),
+    largeImageUrl: z.string().optional(),
+    similarArtist: z.array(z.string().or(ArtistID3Schema)).default([]),
+});
+
+export const ArtistSchema = z.object({
+    artistInfo: ArtistInfoSchema.optional(),
+    artist: ArtistID3Schema,
 });
 
 export const SubsonicUserSchema = z.object({
@@ -219,11 +265,22 @@ export type Contributor = z.infer<typeof ContributorSchema>;
 export type Genre = z.infer<typeof GenreSchema>;
 export type RecordLabel = z.infer<typeof RecordLabelSchema>;
 export type AlbumReleaseDate = z.infer<typeof AlbumReleaseDateSchema>;
+export type StructuredLyrics = z.infer<typeof StructuredLyricsSchema>;
 export type DiscTitles = z.infer<typeof DiscTitlesSchema>;
 export type AlbumID3Artists = z.infer<typeof AlbumID3ArtistsSchema>;
 export type AlbumID3 = z.infer<typeof AlbumID3Schema>;
+export type Album = z.infer<typeof AlbumSchema>;
+export type ArtistInfo = z.infer<typeof ArtistInfoSchema>;
+export type Artist = z.infer<typeof ArtistSchema>;
 export type ArtistID3 = z.infer<typeof ArtistID3Schema>;
 export type Song = z.infer<typeof SongSchema>;
+export type SongID3 = z.infer<typeof SongID3Schema>;
 export type SubsonicUser = z.infer<typeof SubsonicUserSchema>;
 export type BackendUser = z.infer<typeof BackendUserSchema>;
 export type User = z.infer<typeof UserSchema>;
+export interface nowPlaying {
+    track: SongID3;
+    minutesAgo: Date;
+    username: string;
+    playerName: string;
+}

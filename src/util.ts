@@ -2,7 +2,7 @@ import { stringify } from 'xml';
 import { md5 } from 'md5';
 import { encodeHex } from 'hex';
 import { Context } from 'hono';
-import type { User } from './zod.ts';
+import type { Config, User } from './zod.ts';
 import * as log from 'log';
 import { blue, bold, gray, red, yellow } from 'colors';
 
@@ -10,6 +10,7 @@ const SERVER_NAME = 'Dinosonic';
 export const SERVER_VERSION = '1.0.0';
 const API_VERSION = '1.16.1';
 export let database: Deno.Kv;
+export let config: Config;
 export let logger = log.getLogger();
 
 export const ERROR_MESSAGES: Record<number, string> = {
@@ -73,7 +74,8 @@ export async function setupLogger(logLevel: string) {
     logger = log.getLogger();
 }
 
-export function setDatabase(Database: Deno.Kv) {
+export function setConstants(Database: Deno.Kv, Config: Config) {
+    config = Config;
     return database = Database;
 }
 
@@ -136,8 +138,10 @@ export async function validateAuth(c: Context): Promise<Response | { username: s
     const password = c.req.query('p');
     const token = c.req.query('t');
     const salt = c.req.query('s');
+    const client = c.req.query('c');
 
-    if (!username) return createResponse(c, {}, 'failed', { code: 10, message: ERROR_MESSAGES[10] });
+    if (!username) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'u'" });
+    if (!client) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'c'" });
 
     // 🔍 Get user from the database
     const user = (await database.get(['users', username])).value as User | null;
