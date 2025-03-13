@@ -3,14 +3,6 @@ name: Build and Release Dinosonic
 on:
   workflow_dispatch:
     inputs:
-      release_type:
-        description: "Release Type (prerelease/release)"
-        required: true
-        default: "prerelease"
-        type: choice
-        options:
-          - prerelease
-          - release
       version:
         description: "Version for the release (e.g., 1.2.3)"
         default: "1.x.x"
