@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, validateAuth } from '../../util.ts';
 import { Album, Artist, Song } from '../../zod.ts';
 
 const getArtistInfo = new Hono();
@@ -8,9 +8,9 @@ async function handlegetArtistInfo(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
 
-    let id = c.req.query('id') || '';
-    const _count = parseInt(c.req.query('count') || '20');
-    const includeNotPresent = c.req.query('includeNotPresent');
+    let id = await getField(c, 'id') || '';
+    const _count = parseInt(await getField(c, 'count') || '20');
+    const includeNotPresent = await getField(c, 'includeNotPresent');
 
     if (includeNotPresent === 'true') return createResponse(c, {}, 'failed', { code: 0, message: "Parameter 'includeNotPresent' not implemented" });
     if (!id) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });

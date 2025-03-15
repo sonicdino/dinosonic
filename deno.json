@@ -18,7 +18,6 @@
         "singleQuote": true
     },
     "imports": {
-        "deno_image": "https://deno.land/x/deno_image/mod.ts",
         "walk": "https://deno.land/std/fs/walk.ts",
         "parse-args": "jsr:@std/cli/parse-args",
         "zod": "https://deno.land/x/zod/mod.ts",

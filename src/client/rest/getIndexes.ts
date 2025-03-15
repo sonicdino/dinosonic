@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, validateAuth } from '../../util.ts';
 import { Artist } from '../../zod.ts';
 
 const getIndexes = new Hono();
@@ -8,7 +8,7 @@ async function handlegetIndexes(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
 
-    const id = parseInt(c.req.query('musicFolderId') || '0');
+    const id = parseInt(await getField(c, 'musicFolderId') || '0');
     if (!id) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });
 
     const artists = (await Array.fromAsync(database.list({ prefix: ['artists'] }))).map((artist) => (artist.value as Artist));

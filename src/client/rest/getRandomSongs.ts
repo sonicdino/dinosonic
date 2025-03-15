@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, validateAuth } from '../../util.ts';
 import { Song, userData } from '../../zod.ts';
 
 const getRandomSongs = new Hono();
@@ -8,10 +8,10 @@ async function handlegetRandomSongs(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
 
-    const size = parseInt(c.req.query('size') || '10');
-    const fromYear = parseInt(c.req.query('fromYear') || '0');
-    const toYear = parseInt(c.req.query('toYear') || '0');
-    const genre = c.req.query('genre');
+    const size = parseInt(await getField(c, 'size') || '10');
+    const fromYear = parseInt(await getField(c, 'fromYear') || '0');
+    const toYear = parseInt(await getField(c, 'toYear') || '0');
+    const genre = await getField(c, 'genre');
 
     let songs = (await Array.fromAsync(database.list({ prefix: ['tracks'] }))).map((Albums) => (Albums.value as Song));
     const song = [];

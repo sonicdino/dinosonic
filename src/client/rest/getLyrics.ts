@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, logger, separatorsToRegex, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, logger, separatorsToRegex, validateAuth } from '../../util.ts';
 import { Song, StructuredLyrics } from '../../zod.ts';
 
 const getLyrics = new Hono();
@@ -10,8 +10,8 @@ async function handlegetLyrics(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
 
-    const artist = c.req.query('artist') || '';
-    const title = c.req.query('title') || '';
+    const artist = await getField(c, 'artist') || '';
+    const title = await getField(c, 'title') || '';
 
     if (!title) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'title'" });
     if (!artist) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'artist'" });

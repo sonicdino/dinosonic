@@ -1,6 +1,6 @@
 import { Context, Hono } from 'hono';
 import { createResponse, database, validateAuth } from '../../util.ts';
-import { Artist, userData } from '../../zod.ts';
+import { Artist, ArtistID3, userData } from '../../zod.ts';
 
 const getArtists = new Hono();
 
@@ -24,11 +24,11 @@ async function handlegetArtists(c: Context) {
         artists.push(artist.artist);
     }
 
-    const groupedArtists: Record<string, any[]> = {};
+    const groupedArtists: Record<string, ArtistID3[]> = {};
 
     for (const artist of artists) {
         const firstChar = artist.name[0].toUpperCase();
-        const indexChar = /^[A-Z]$/.test(firstChar) ? firstChar : "#"; // Non-alphabetical as '#'
+        const indexChar = /^[A-Z]$/.test(firstChar) ? firstChar : '#'; // Non-alphabetical as '#'
 
         if (!groupedArtists[indexChar]) {
             groupedArtists[indexChar] = [];
@@ -38,11 +38,11 @@ async function handlegetArtists(c: Context) {
     }
 
     for (const key in groupedArtists) {
-        groupedArtists[key].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+        groupedArtists[key].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
     }
 
     const sortedIndexList = Object.entries(groupedArtists)
-        .sort(([a], [b]) => a === "#" ? -1 : b === "#" ? 1 : a.localeCompare(b))
+        .sort(([a], [b]) => a === '#' ? -1 : b === '#' ? 1 : a.localeCompare(b))
         .map(([key, value]) => ({
             name: key,
             artist: value,

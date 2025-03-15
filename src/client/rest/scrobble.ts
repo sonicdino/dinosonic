@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, validateAuth } from '../../util.ts';
 import { nowPlaying, Song, userData, userDataSchema } from '../../zod.ts';
 
 const scrobble = new Hono();
@@ -7,10 +7,10 @@ const scrobble = new Hono();
 async function handleScrobble(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
-    const id = c.req.query('id');
-    const time = new Date(parseInt(c.req.query('time') || Date.now().toString(), 10));
-    const client = c.req.query('c');
-    let submission: string | boolean | undefined = c.req.query('submission');
+    const id = await getField(c, 'id');
+    const time = new Date(parseInt(await getField(c, 'time') || Date.now().toString(), 10));
+    const client = await getField(c, 'c');
+    let submission: string | boolean | undefined = await getField(c, 'submission');
     if (!submission) submission = true;
     submission = submission === 'true';
 
@@ -23,7 +23,17 @@ async function handleScrobble(c: Context) {
     const nowPlayingEntry = (await database.get(['nowPlaying', isValidated.username, 'client', client, 'track', track.subsonic.id])).value as
         | nowPlaying
         | undefined;
-    if (!nowPlayingEntry) {
+    if (!nowPlayingEntry || nowPlayingEntry.playerName !== client) {
+        await database.set(['nowPlaying', isValidated.username, 'client', client, 'track', track.subsonic.id], {
+            track: track.subsonic,
+            minutesAgo: time,
+            username: isValidated.username,
+            playerName: client,
+        });
+    }
+
+    if (submission) {
+        await database.delete(['nowPlaying', isValidated.username, 'client', client, 'track', track.subsonic.id]);
         let userData = (await database.get(['userData', isValidated.username, 'track', track.subsonic.id])).value as userData | undefined;
         if (!userData) {
             userData = userDataSchema.parse({
@@ -36,15 +46,7 @@ async function handleScrobble(c: Context) {
             userData.playCount = (userData.playCount || 0) + 1;
         }
         await database.set(['userData', isValidated.username, 'track', track.subsonic.id], userData);
-        await database.set(['nowPlaying', isValidated.username, 'client', client, 'track', track.subsonic.id], {
-            track: track.subsonic,
-            minutesAgo: time,
-            username: isValidated.username,
-            playerName: client,
-        });
     }
-
-    if (submission) await database.delete(['nowPlaying', isValidated.username, 'client', client, 'track', track.subsonic.id]);
     // TODO: LastFM Scrobble.
 
     return createResponse(c, {}, 'ok');

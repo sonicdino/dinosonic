@@ -1,6 +1,6 @@
 import { Context, Hono } from 'hono';
 import fuzzy from 'fuzzy';
-import { createResponse, database, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, validateAuth } from '../../util.ts';
 import { Album, Artist, Song, userData } from '../../zod.ts';
 
 const search = new Hono();
@@ -9,14 +9,14 @@ async function handlesearch(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
 
-    const query = (c.req.query('query') || '').replace(/[`'"]/g, '').trim();
-    const artistCount = parseInt(c.req.query('artistCount') || '20');
-    let artistOffset = parseInt(c.req.query('artistOffset') || '0');
-    const albumCount = parseInt(c.req.query('albumCount') || '20');
-    let albumOffset = parseInt(c.req.query('albumOffset') || '0');
-    const songCount = parseInt(c.req.query('songCount') || '20');
-    let songOffset = parseInt(c.req.query('songOffset') || '0');
-    // const musicFolderId = c.req.query("musicFolderId") || "";
+    const query = (await getField(c, 'query') || '').replace(/[`'"]/g, '').trim();
+    const artistCount = parseInt(await getField(c, 'artistCount') || '20');
+    let artistOffset = parseInt(await getField(c, 'artistOffset') || '0');
+    const albumCount = parseInt(await getField(c, 'albumCount') || '20');
+    let albumOffset = parseInt(await getField(c, 'albumOffset') || '0');
+    const songCount = parseInt(await getField(c, 'songCount') || '20');
+    let songOffset = parseInt(await getField(c, 'songOffset') || '0');
+    // const musicFolderId = await getField(c, "musicFolderId") || "";
 
     const artist = [];
     const album = [];

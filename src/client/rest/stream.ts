@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { config, createResponse, database, validateAuth } from '../../util.ts';
+import { config, createResponse, database, getField, validateAuth } from '../../util.ts';
 import { Song } from '../../zod.ts';
 
 const stream = new Hono();
@@ -7,11 +7,11 @@ const stream = new Hono();
 async function handleStream(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
-    const id = c.req.query('id');
-    const format = c.req.query('format') || 'original';
-    const maxBitRate = parseInt(c.req.query('maxBitRate') || '0');
-    const timeOffset = parseInt(c.req.query('timeOffset') || '0');
-    const estimateContentLength = c.req.query('estimateContentLength') === 'true';
+    const id = await getField(c, 'id');
+    const format = await getField(c, 'format') || 'original';
+    const maxBitRate = parseInt(await getField(c, 'maxBitRate') || '0');
+    const timeOffset = parseInt(await getField(c, 'timeOffset') || '0');
+    const estimateContentLength = await getField(c, 'estimateContentLength') === 'true';
 
     if (!id) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });
 

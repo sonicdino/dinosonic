@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, validateAuth } from '../../util.ts';
 import { Song, userData } from '../../zod.ts';
 
 const getSongsByGenre = new Hono();
@@ -8,9 +8,9 @@ async function handlegetSongsByGenre(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
 
-    let count = parseInt(c.req.query('count') || '0');
-    const offset = parseInt(c.req.query('offset') || '0');
-    const genre = c.req.query('genre');
+    let count = parseInt(await getField(c, 'count') || '0');
+    const offset = parseInt(await getField(c, 'offset') || '0');
+    const genre = await getField(c, 'genre');
 
     if (count > 500) count = 500;
     let songs = (await Array.fromAsync(database.list({ prefix: ['tracks'] })))

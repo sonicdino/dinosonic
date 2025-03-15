@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { config, createResponse, database, validateAuth } from '../../util.ts';
+import { config, createResponse, database, getField, validateAuth } from '../../util.ts';
 import { Artist, Song, SongID3, userData } from '../../zod.ts';
 import { getArtistIDByName } from '../../MediaScanner.ts';
 import { getTopTracks } from '../../LastFM.ts';
@@ -10,8 +10,8 @@ async function handlegetTopSongs(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
 
-    const artistName = c.req.query('artist') || '';
-    const count = parseInt(c.req.query('count') || '50');
+    const artistName = await getField(c, 'artist') || '';
+    const count = parseInt(await getField(c, 'count') || '50');
 
     if (!artistName) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'artist'" });
     const artist = (await database.get(['artists', await getArtistIDByName(database, artistName) || ''])).value as Artist | null;

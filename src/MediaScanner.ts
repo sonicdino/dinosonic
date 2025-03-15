@@ -2,7 +2,7 @@
 import { walk } from 'walk';
 import { IAudioMetadata, IPicture, parseFile } from 'music-metadata';
 import * as path from 'path';
-import { config, exists, logger, separatorsToRegex } from './util.ts';
+import { config, database, exists, logger, separatorsToRegex } from './util.ts';
 import {
     Album,
     AlbumID3Artists,
@@ -27,31 +27,43 @@ const PLACEHOLDER_SEPARATORS = [';', '/'];
 const separators = PLACEHOLDER_SEPARATORS;
 
 interface ScanStatus {
-    running: boolean;
-    scannedFiles: number;
+    scanning: boolean;
+    count: number;
     totalFiles: number;
+    lastScan: Date;
 }
 
 let scanStatus: ScanStatus = {
-    running: false,
-    scannedFiles: 0,
+    scanning: false,
+    count: 0,
     totalFiles: 0,
+    lastScan: new Date(),
 };
 
 export async function scanMediaDirectories(database: Deno.Kv, directories: string[]) {
-    if (scanStatus.running) {
+    if (scanStatus.scanning) {
         logger.warn('Scan already in progress.');
-        return;
+        return scanStatus;
     }
 
-    scanStatus = { running: true, scannedFiles: 0, totalFiles: 0 };
+    scanStatus = { scanning: true, count: 0, totalFiles: 0, lastScan: new Date() };
 
     for (const dir of directories) {
         logger.info(`🔍 Scanning directory: ${dir}`);
         await scanDirectory(database, dir);
     }
 
-    scanStatus.running = false;
+    for await (const entry of database.list({ prefix: ['filePathToId'] })) {
+        const filePath = entry.key[1] as string;
+        if (!seenFiles.has(filePath)) {
+            const trackId = entry.value as string;
+            await database.delete(['tracks', trackId]);
+            await database.delete(entry.key);
+            logger.info(`❌ Removed: ${trackId}`);
+        }
+    }
+
+    scanStatus.scanning = false;
     logger.info('✅ Media scan complete.');
 }
 
@@ -64,17 +76,7 @@ async function scanDirectory(database: Deno.Kv, dir: string) {
         const filePath = entry.path;
         seenFiles.add(filePath);
         await processMediaFile(database, entry.path);
-        scanStatus.scannedFiles++;
-    }
-
-    for await (const entry of database.list({ prefix: ['filePathToId'] })) {
-        const filePath = entry.key[1] as string;
-        if (!seenFiles.has(filePath)) {
-            const trackId = entry.value as string;
-            await database.delete(['tracks', trackId]);
-            await database.delete(entry.key);
-            logger.info(`❌ Removed: ${trackId}`);
-        }
+        scanStatus.count++;
     }
 }
 
@@ -84,15 +86,13 @@ async function processMediaFile(database: Deno.Kv, filePath: string) {
         trackId = await getNextId(database, 't');
         await database.set(['filePathToId', filePath], trackId);
     }
-    const existing = await database.get(['tracks', trackId]);
 
+    // Move existence check inside extractMetadata
     const metadata = await extractMetadata(filePath, trackId, database);
     if (!metadata) return;
 
-    if (!existing.value || (existing.value as Song).backend.lastModified !== metadata.backend.lastModified) {
-        logger.info(`📀 Updating metadata for ${filePath}`);
-        await database.set(['tracks', trackId], metadata);
-    }
+    logger.info(`📀 Updating metadata for ${filePath}`);
+    await database.set(['tracks', trackId], metadata);
 }
 
 async function getNextId(database: Deno.Kv, type: 't' | 'a' | 'A' | 'c'): Promise<string> {
@@ -360,6 +360,13 @@ async function handleArtist(database: Deno.Kv, artist: string) {
 
 async function extractMetadata(filePath: string, trackId: string, database: Deno.Kv) {
     try {
+        const existing = await database.get(['tracks', trackId]);
+        const lastModified = (await Deno.stat(filePath)).mtime?.getTime() ?? Date.now();
+
+        // If the file hasn't changed, skip processing
+        if (existing.value && (existing.value as Song).backend.lastModified === lastModified) return null; // Skip unnecessary parsing
+        logger.info(`🔍 Extracting metadata for ${filePath}`);
+
         const metadata = await parseFile(filePath);
 
         const album = metadata.common.album || 'Unknown Album';
@@ -479,6 +486,11 @@ async function extractMetadata(filePath: string, trackId: string, database: Deno
     }
 }
 
-export function getScanStatus() {
+export function GetScanStatus() {
+    return scanStatus;
+}
+
+export function StartScan() {
+    scanMediaDirectories(database, config.music_folders);
     return scanStatus;
 }

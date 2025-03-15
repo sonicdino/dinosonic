@@ -1,16 +1,24 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, validateAuth } from '../../util.ts';
-import { resize } from 'deno_image';
+import { createResponse, database, getField, logger, validateAuth } from '../../util.ts';
 import { CoverArt } from '../../zod.ts';
 
 const getCoverArt = new Hono();
+const mimeToExt: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/png': 'png',
+    'image/gif': 'gif',
+    'image/webp': 'webp', // webp sucks.
+    'image/bmp': 'bmp',
+    'image/svg+xml': 'svg',
+};
 
 async function handlegetCoverArt(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
 
-    const id = c.req.query('id');
-    const size = parseInt(c.req.query('size') || '0');
+    const id = await getField(c, 'id');
+    const size = parseInt(await getField(c, 'size') || '0');
 
     if (!id) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });
 
@@ -19,10 +27,22 @@ async function handlegetCoverArt(c: Context) {
     let cover: Uint8Array = await Deno.readFile(Cover.path);
 
     if (size) {
-        cover = await resize(cover, {
-            width: size,
-            height: size,
+        const tmpDir = await Deno.makeTempDir();
+        const outputFilePath = `${tmpDir}/cover.${mimeToExt[Cover.mimeType]}`;
+
+        const command = new Deno.Command('ffmpeg', {
+            args: ['-i', Cover.path, '-vf', `scale=${size}:${size}`, outputFilePath],
+            stdout: 'piped',
+            stderr: 'piped',
         });
+        const process = await command.output();
+
+        if (process.success) {
+            cover = await Deno.readFile(outputFilePath);
+            await Deno.remove(tmpDir, { recursive: true });
+        } else {
+            logger.debug('Failed to resize cover art. Falling back to original.');
+        }
     }
 
     return new Response(cover, {

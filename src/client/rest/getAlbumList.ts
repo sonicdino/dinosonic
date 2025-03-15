@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, validateAuth } from '../../util.ts';
 import { Album, userData } from '../../zod.ts';
 
 const getAlbumList = new Hono();
@@ -8,12 +8,12 @@ async function handlegetAlbumList(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
 
-    const type = c.req.query('type');
-    const size = parseInt(c.req.query('size') || '10');
-    const offset = parseInt(c.req.query('offset') || '0');
-    const fromYear = parseInt(c.req.query('fromYear') || '0');
-    const toYear = parseInt(c.req.query('toYear') || '0');
-    const genre = c.req.query('genre');
+    const type = await getField(c, 'type');
+    const size = parseInt(await getField(c, 'size') || '10');
+    const offset = parseInt(await getField(c, 'offset') || '0');
+    const fromYear = parseInt(await getField(c, 'fromYear') || '0');
+    const toYear = parseInt(await getField(c, 'toYear') || '0');
+    const genre = await getField(c, 'genre');
 
     if (!type) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'type'" });
     if ((type === 'byYear' && !fromYear)) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'fromYear'" });

@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, validateAuth } from '../../util.ts';
 import { Album } from '../../zod.ts';
 
 const getAlbumInfo = new Hono();
@@ -8,7 +8,7 @@ async function handlegetAlbumInfo(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
 
-    const id = c.req.query('id') || '';
+    const id = await getField(c, 'id') || '';
 
     if (!id) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });
     const album = (await database.get(['albums', id])).value as Album | undefined;

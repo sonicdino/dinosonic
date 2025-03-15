@@ -85,6 +85,15 @@ export function separatorsToRegex(separators: string[]): RegExp {
     return new RegExp(`[${escaped}]+`);
 }
 
+export async function getField(c: Context, fieldName: string): Promise<string | undefined> {
+    if (c.req.method === 'GET') return c.req.query(fieldName);
+    else if (c.req.method === 'POST') {
+        const body = await c.req.parseBody();
+        return body[fieldName] as string | undefined;
+    }
+    return;
+}
+
 /**
  * Check if a directory of file exists.
  * @param path Path of the file/dir to check
@@ -106,13 +115,13 @@ export async function exists(path: string): Promise<boolean> {
 /**
  * Creates a standardized OpenSubsonic response
  */
-export function createResponse(
+export async function createResponse(
     c: Context,
     data: Record<string, unknown> = {},
     status: 'ok' | 'failed' = 'ok',
     error?: { code: number; message: string },
 ) {
-    const format = c.req.query('f') || 'xml';
+    const format = await getField(c, 'f') || 'xml';
     const responseData = {
         'subsonic-response': {
             status,
@@ -134,11 +143,11 @@ export function createResponse(
 }
 
 export async function validateAuth(c: Context): Promise<Response | { username: string }> {
-    const username = c.req.query('u');
-    const password = c.req.query('p');
-    const token = c.req.query('t');
-    const salt = c.req.query('s');
-    const client = c.req.query('c');
+    const username = await getField(c, 'u');
+    const password = await getField(c, 'p');
+    const token = await getField(c, 't');
+    const salt = await getField(c, 's');
+    const client = await getField(c, 'c');
 
     if (!username) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'u'" });
     if (!client) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'c'" });

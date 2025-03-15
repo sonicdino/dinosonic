@@ -27,6 +27,9 @@ import getGenres from './getGenres.ts';
 import getSongsByGenre from './getSongsByGenre.ts';
 import scrobble from './scrobble.ts';
 import getNowPlaying from './getNowPlaying.ts';
+import getSimilarSongs from './getSimilarSongs.ts';
+import startScan from './startScan.ts';
+import getScanStatus from './getScanStatus.ts';
 
 restRoutes.route('/', ping);
 restRoutes.route('/', getLicense);
@@ -53,5 +56,8 @@ restRoutes.route('/', getGenres);
 restRoutes.route('/', getSongsByGenre);
 restRoutes.route('/', scrobble);
 restRoutes.route('/', getNowPlaying);
+restRoutes.route('/', getSimilarSongs);
+restRoutes.route('/', startScan);
+restRoutes.route('/', getScanStatus);
 
 export default restRoutes;

@@ -100,17 +100,26 @@ async function cleanupNowPlaying() {
 
     for await (const entry of allNowPlaying) {
         const item = entry.value as nowPlaying;
-        const minutesAgo = Math.floor((Date.now() - item.minutesAgo.getTime()) / (1000 * 60));
-        // If, it has been 10 minutes since it was set, delete.
-        if (minutesAgo > 10) {
+
+        // If missing required fields, delete immediately
+        if (!item || !item.minutesAgo || !item.track.duration) {
             await database.delete(entry.key);
-            logger.info(`Removed stale nowPlaying entry for ${item.username}`);
+            logger.warn(`Removed invalid nowPlaying entry for ${entry.key}`);
+            continue;
+        }
+
+        const minutesAgo = Math.floor((Date.now() - item.minutesAgo.getTime()) / (1000 * 60));
+
+        // Remove if it's been 10 minutes or longer than the song duration
+        if (minutesAgo > 10 || minutesAgo > Math.ceil(item.track.duration / 60)) {
+            await database.delete(entry.key);
+            logger.debug(`Removed stale nowPlaying entry for ${item.username}`);
         }
     }
 }
 
-// TODO: Use cron maybe.
-setInterval(cleanupNowPlaying, 60 * 100);
+// Run cleanup every minute
+setInterval(cleanupNowPlaying, 60 * 1000);
 cleanupNowPlaying();
 
 if (!(await database.get(['users', 'admin'])).value) {
