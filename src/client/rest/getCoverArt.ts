@@ -3,15 +3,6 @@ import { createResponse, database, getField, logger, validateAuth } from '../../
 import { CoverArt } from '../../zod.ts';
 
 const getCoverArt = new Hono();
-const mimeToExt: Record<string, string> = {
-    'image/jpeg': 'jpg',
-    'image/jpg': 'jpg',
-    'image/png': 'png',
-    'image/gif': 'gif',
-    'image/webp': 'webp', // webp sucks.
-    'image/bmp': 'bmp',
-    'image/svg+xml': 'svg',
-};
 
 async function handlegetCoverArt(c: Context) {
     const isValidated = await validateAuth(c);
@@ -24,31 +15,37 @@ async function handlegetCoverArt(c: Context) {
 
     const Cover = (await database.get(['covers', id])).value as CoverArt | undefined;
     if (!Cover) return createResponse(c, {}, 'failed', { code: 70, message: 'Cover not found' });
-    let cover: Uint8Array = await Deno.readFile(Cover.path);
-
-    if (size) {
-        const tmpDir = await Deno.makeTempDir();
-        const outputFilePath = `${tmpDir}/cover.${mimeToExt[Cover.mimeType]}`;
-
-        const command = new Deno.Command('ffmpeg', {
-            args: ['-i', Cover.path, '-vf', `scale=${size}:${size}`, outputFilePath],
-            stdout: 'piped',
-            stderr: 'piped',
+    if (!size) {
+        return new Response(await Deno.readFile(Cover.path), {
+            headers: {
+                'Content-Type': Cover.mimeType,
+                'Cache-Control': 'public, max-age=3600',
+            },
         });
-        const process = await command.output();
-
-        if (process.success) {
-            cover = await Deno.readFile(outputFilePath);
-            await Deno.remove(tmpDir, { recursive: true });
-        } else {
-            logger.debug('Failed to resize cover art. Falling back to original.');
-        }
     }
 
-    return new Response(cover, {
+    const process = new Deno.Command('ffmpeg', {
+        args: ['-i', Cover.path, '-vf', `scale=${size}:${size}`, '-f', 'image2pipe', 'pipe:1'],
+        stdout: 'piped',
+        stderr: 'piped',
+    }).spawn();
+
+    const { success, stdout, stderr } = await process.output();
+
+    if (!success) {
+        const errorMsg = new TextDecoder().decode(stderr);
+        logger.error(`FFmpeg failed: ${errorMsg}. Falling back to original.`);
+        return new Response(await Deno.readFile(Cover.path), {
+            headers: {
+                'Content-Type': Cover.mimeType,
+                'Cache-Control': 'public, max-age=3600',
+            },
+        });
+    }
+
+    return new Response(stdout, {
         headers: {
             'Content-Type': Cover.mimeType,
-            'Content-Length': cover.length.toString(),
             'Cache-Control': 'public, max-age=3600',
         },
     });

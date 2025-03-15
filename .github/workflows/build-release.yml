@@ -103,9 +103,10 @@ jobs:
       - name: Checkout into repo
         uses: actions/checkout@v3
 
-      - name: Set up Docker Buildx
-        id: buildx
-        uses: docker/setup-buildx-action@v1
+      # Buildx and arm builds are disabled for now as the app is not fully released yet.
+      # - name: Set up Docker Buildx
+      #   id: buildx
+      #   uses: docker/setup-buildx-action@v1
 
       - name: Login to GHCR
         uses: docker/login-action@v1
@@ -130,7 +131,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: .
-          platforms: linux/amd64, linux/arm64
+          # platforms: linux/amd64, linux/arm64
           push: true
           tags: ghcr.io/${{steps.lower-repo.outputs.repository}}:${{format('v{0}', github.event.inputs.version)}}, ${{env.LATEST_TAG}}
           labels: org.opencontainers.image.title=Docker
