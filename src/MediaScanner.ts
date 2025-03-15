@@ -63,6 +63,7 @@ export async function scanMediaDirectories(database: Deno.Kv, directories: strin
         }
     }
 
+    seenFiles.clear();
     scanStatus.scanning = false;
     logger.info('✅ Media scan complete.');
 }
