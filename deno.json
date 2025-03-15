@@ -22,6 +22,7 @@
         "parse-args": "jsr:@std/cli/parse-args",
         "zod": "https://deno.land/x/zod/mod.ts",
         "music-metadata": "npm:music-metadata",
+        "hono-cors": "jsr:@hono/hono/cors",
         "colors": "jsr:@std/fmt/colors",
         "hex": "jsr:@std/encoding/hex",
         "hono": "jsr:@hono/hono",

@@ -5,6 +5,7 @@ import { logger, SERVER_VERSION, setConstants, setupLogger } from './util.ts';
 import restRoutes from './client/rest/index.ts';
 // import apiRoutes from "./client/api/index.ts";
 import { Context, Hono, Next } from 'hono';
+import { cors } from 'hono-cors';
 import { parse } from 'toml';
 import * as path from 'path';
 let configFile = Deno.env.get('DINO_CONFIG_FILE');
@@ -148,6 +149,15 @@ if (config.scan_on_start) {
 
 logger.info('🚀 Starting Dinosonic server...');
 const app = new Hono();
+
+app.use(
+    '*',
+    cors({
+        origin: '*',
+        allowMethods: ['GET', 'POST'],
+        allowHeaders: ['Content-Type', 'Authorization'],
+    }),
+);
 
 app.use('*', async (c: Context, next: Next) => {
     const start = Date.now();
