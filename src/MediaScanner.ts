@@ -213,7 +213,7 @@ async function handleAlbum(database: Deno.Kv, albumId: string, trackId: string, 
             if (artist && !artist.artist.album.includes(albumId)) {
                 artist.artist.albumCount = (artist.artist.albumCount || 0) + 1;
                 artist.artist.album.push(albumId);
-                await database.set(['artists', albumArtists[0].id], artist);
+                await database.set(['artists', artist.artist.id], artist);
                 changes = true;
             }
         }
@@ -243,7 +243,7 @@ async function handleAlbum(database: Deno.Kv, albumId: string, trackId: string, 
         if (artist && !artist.artist.album.includes(albumId)) {
             artist.artist.albumCount = artist.artist.albumCount + 1;
             artist.artist.album.push(albumId);
-            await database.set(['artists', albumArtists[0].id], artist);
+            await database.set(['artists', artist.artist.id], artist);
         }
     }
 
@@ -269,7 +269,7 @@ async function handleAlbum(database: Deno.Kv, albumId: string, trackId: string, 
         artist: albumArtists[0].name,
         year: metadata.common.year,
         coverArt: albumId,
-        duration: metadata.format.duration ? Math.round(metadata.format.duration) : undefined,
+        duration: metadata.format.duration ? Math.round(metadata.format.duration) : 0,
         genre: genres?.map((genre: Genre) => genre.name).join(', '),
         genres: genres,
         created: (new Date(metadata.common.date || '1970-1-1')).toISOString(),

@@ -111,7 +111,7 @@ async function cleanupNowPlaying() {
         const minutesAgo = Math.floor((Date.now() - item.minutesAgo.getTime()) / (1000 * 60));
 
         // Remove if it's been 10 minutes or longer than the song duration
-        if (minutesAgo > 10 || minutesAgo > Math.ceil(item.track.duration / 60)) {
+        if (minutesAgo > Math.ceil(item.track.duration / 60)) {
             await database.delete(entry.key);
             logger.debug(`Removed stale nowPlaying entry for ${item.username}`);
         }
