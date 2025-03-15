@@ -91,15 +91,8 @@ jobs:
     permissions: write-all
     if: github.event.inputs.build_docker == 'true'
     steps:
-      # - name: Checkout into repo
-      #   uses: actions/checkout@v3
-      # - name: Download linux binary
-      #   uses: actions/download-artifact@v3
-      #   with:
-      #     name: dinosonic-binaries
-      #     path: dist
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
+      - name: Checkout into repo
+        uses: actions/checkout@v3
 
       - name: Set up Docker Buildx
         id: buildx
