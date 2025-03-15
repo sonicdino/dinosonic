@@ -87,7 +87,7 @@ jobs:
   docker:
     name: Build and push Docker image
     runs-on: ubuntu-latest
-    needs: build
+    # needs: build
     permissions: write-all
     if: github.event.inputs.build_docker == 'true'
     steps:
@@ -112,6 +112,11 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - id: lower-repo
+        name: Repository to lowercase
+        run: |
+          echo "repository=${GITHUB_REPOSITORY@L}" >> $GITHUB_OUTPUT
+
       - name: Docker meta
         id: meta # you'll use this in the next step
         uses: docker/metadata-action@v3
@@ -125,9 +130,9 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/${{github.repository}}:${{format('v{0}', github.event.inputs.version)}}, ${{env.LATEST_TAG}}
+          tags: ghcr.io/${{steps.lower-repo.outputs.repository}}:${{format('v{0}', github.event.inputs.version)}}, ${{env.LATEST_TAG}}
           labels: org.opencontainers.image.title=Docker
           build-args: |
             app_version=${{github.event.inputs.version}}
         env:
-          LATEST_TAG: ${{ github.event.inputs.is_latest == 'true' && format('ghcr.io/{0}:latest', github.repository) || '' }}
+          LATEST_TAG: ${{ github.event.inputs.is_latest == 'true' && format('ghcr.io/{0}:latest', steps.lower-repo.outputs.repository) || '' }}
