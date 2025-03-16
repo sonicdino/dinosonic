@@ -245,6 +245,15 @@ export const SubsonicUserSchema = z.object({
     folder: z.array(z.string()).optional(),
 });
 
+export const PlayQueueSchema = z.object({
+    current: z.string(),
+    position: z.number(),
+    username: z.string(),
+    changed: z.date(),
+    changedBy: z.string(),
+    entry: z.array(z.string().or(SongID3Schema)).optional(),
+});
+
 export const BackendUserSchema = z.object({
     username: z.string(),
     password: z.string(),
@@ -275,6 +284,7 @@ export type Artist = z.infer<typeof ArtistSchema>;
 export type ArtistID3 = z.infer<typeof ArtistID3Schema>;
 export type Song = z.infer<typeof SongSchema>;
 export type SongID3 = z.infer<typeof SongID3Schema>;
+export type PlayQueue = z.infer<typeof PlayQueueSchema>;
 export type SubsonicUser = z.infer<typeof SubsonicUserSchema>;
 export type BackendUser = z.infer<typeof BackendUserSchema>;
 export type User = z.infer<typeof UserSchema>;

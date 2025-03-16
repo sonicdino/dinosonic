@@ -40,6 +40,8 @@ import createUser from './createUser.ts';
 import updateUser from './updateUser.ts';
 import deleteUser from './deleteUser.ts';
 import changePassword from './changePassword.ts';
+import savePlayQueue from './savePlayQueue.ts';
+import getPlayQueue from './getPlayQueue.ts';
 
 restRoutes.route('/', ping);
 restRoutes.route('/', getLicense);
@@ -79,5 +81,7 @@ restRoutes.route('/', createUser);
 restRoutes.route('/', updateUser);
 restRoutes.route('/', deleteUser);
 restRoutes.route('/', changePassword);
+restRoutes.route('/', savePlayQueue);
+restRoutes.route('/', getPlayQueue);
 
 export default restRoutes;

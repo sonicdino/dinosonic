@@ -21,7 +21,6 @@ async function handlegetLyrics(c: Context) {
         (track as Song).subsonic.artist.toLowerCase().trim() === artist.toLowerCase().trim()
     );
     if (track) {
-        console.log(track);
         return createResponse(c, {
             lyrics: {
                 artist: track.subsonic.artist,
