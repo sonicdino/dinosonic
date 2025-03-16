@@ -2,7 +2,7 @@ import { stringify } from 'xml';
 import { md5 } from 'md5';
 import { encodeHex } from 'hex';
 import { Context } from 'hono';
-import type { Config, User } from './zod.ts';
+import type { Config, SubsonicUser, User } from './zod.ts';
 import * as log from 'log';
 import { blue, bold, gray, red, yellow } from 'colors';
 
@@ -85,7 +85,25 @@ export function separatorsToRegex(separators: string[]): RegExp {
     return new RegExp(`[${escaped}]+`);
 }
 
-export async function getField(c: Context, fieldName: string): Promise<string | undefined> {
+export async function getFields(c: Context, fieldName: string) {
+    if (c.req.method === 'GET') return c.req.queries(fieldName);
+    else if (c.req.method === 'POST') {
+        const body = await c.req.parseBody();
+        const values: string[] = [];
+        Object.keys(body).forEach((key) => {
+            const match = key.match(new RegExp(`^${fieldName}\\[(\\d+)\\]$`)); // Match id[0], id[1]
+            if (match) values[parseInt(match[1], 10)] = body[key] as string; // Store in correct order
+        });
+
+        if (values.length > 0) return values;
+
+        const value = body[fieldName];
+        return Array.isArray(value) ? value : value !== undefined ? [value] : undefined;
+    }
+    return;
+}
+
+export async function getField(c: Context, fieldName: string) {
     if (c.req.method === 'GET') return c.req.query(fieldName);
     else if (c.req.method === 'POST') {
         const body = await c.req.parseBody();
@@ -142,7 +160,7 @@ export async function createResponse(
     return c.json(responseData, error ? 400 : 200);
 }
 
-export async function validateAuth(c: Context): Promise<Response | { username: string }> {
+export async function validateAuth(c: Context): Promise<Response | SubsonicUser> {
     const username = await getField(c, 'u');
     const password = await getField(c, 'p');
     const token = await getField(c, 't');
@@ -153,14 +171,14 @@ export async function validateAuth(c: Context): Promise<Response | { username: s
     if (!client) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'c'" });
 
     // 🔍 Get user from the database
-    const user = (await database.get(['users', username])).value as User | null;
+    const user = (await database.get(['users', username.toLowerCase()])).value as User | null;
     if (!user) return createResponse(c, {}, 'failed', { code: 40, message: ERROR_MESSAGES[40] });
 
     // ✅ Token Authentication
     if (token && salt) {
         const expectedToken = generateTokenHash(user.backend.password, salt);
         if (expectedToken !== token) return createResponse(c, {}, 'failed', { code: 40, message: ERROR_MESSAGES[40] });
-        return { username };
+        return user.subsonic;
     }
 
     // ✅ Basic Authentication
@@ -175,7 +193,7 @@ export async function validateAuth(c: Context): Promise<Response | { username: s
                 return createResponse(c, {}, 'failed', { code: 40, message: ERROR_MESSAGES[40] });
             }
         }
-        return { username };
+        return user.subsonic;
     }
 
     return createResponse(c, {}, 'failed', { code: 42, message: ERROR_MESSAGES[42] });

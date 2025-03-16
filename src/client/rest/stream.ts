@@ -7,6 +7,8 @@ const stream = new Hono();
 async function handleStream(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
+    if (!isValidated.streamRole) return createResponse(c, {}, 'failed', { code: 50, message: 'You have no permission to stream' });
+
     const id = await getField(c, 'id');
     const format = await getField(c, 'format') || 'original';
     const maxBitRate = parseInt(await getField(c, 'maxBitRate') || '0');

@@ -7,6 +7,7 @@ const download = new Hono();
 async function handledownload(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
+    if (!isValidated.downloadRole) return createResponse(c, {}, 'failed', { code: 50, message: 'You have no permission to download' });
     const id = await getField(c, 'id');
     if (!id) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });
 

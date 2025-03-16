@@ -7,6 +7,7 @@ const scrobble = new Hono();
 async function handleScrobble(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
+    if (!isValidated.scrobblingEnabled) return createResponse(c, {}, 'failed', { code: 50, message: 'You have no permission to scrobble' });
     const id = await getField(c, 'id');
     const time = new Date(parseInt(await getField(c, 'time') || Date.now().toString(), 10));
     const client = await getField(c, 'c');

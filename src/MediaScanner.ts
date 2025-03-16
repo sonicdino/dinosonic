@@ -163,7 +163,7 @@ async function handleCoverArt(database: Deno.Kv, id: string, pictures?: IPicture
 
     if (trackPath) {
         const dir = path.dirname(trackPath);
-        const coverNames = ['cover.jpg', 'folder.jpg', 'album.png', 'album.jpg'];
+        const coverNames = ['cover.jpg', 'cover.png', 'folder.jpg', 'folder.png', 'album.png', 'album.jpg'];
 
         for (const name of coverNames) {
             const coverPath = path.join(dir, name);
@@ -232,6 +232,16 @@ async function handleAlbum(database: Deno.Kv, albumId: string, trackId: string, 
                     mediumImageUrl: info.album?.image.find((i: Record<string, string>) => i.size === 'medium')?.['#text'],
                     largeImageUrl: info.album?.image.find((i: Record<string, string>) => i.size === 'large')?.['#text'],
                 });
+
+                if ((albumInfo.largeImageUrl || albumInfo.mediumImageUrl || albumInfo.smallImageUrl)) {
+                    await handleCoverArt(
+                        database,
+                        albumId,
+                        undefined,
+                        undefined,
+                        albumInfo.largeImageUrl || albumInfo.mediumImageUrl || albumInfo.smallImageUrl,
+                    );
+                }
             }
         }
 
@@ -328,15 +338,16 @@ async function handleArtist(database: Deno.Kv, artist: string) {
                     largeImageUrl: ArtistInfo.artist?.image.find((i: Record<string, string>) => i.size === 'large')?.['#text'],
                 });
 
-                if ((artistInfo.largeImageUrl || artistInfo.mediumImageUrl || artistInfo.smallImageUrl)) {
-                    await handleCoverArt(
-                        database,
-                        id,
-                        undefined,
-                        undefined,
-                        artistInfo.largeImageUrl || artistInfo.mediumImageUrl || artistInfo.smallImageUrl,
-                    );
-                }
+                // if ((artistInfo.largeImageUrl || artistInfo.mediumImageUrl || artistInfo.smallImageUrl)) {
+                //     // TODO: Get artist cover from spotify.
+                //     await handleCoverArt(
+                //         database,
+                //         id,
+                //         undefined,
+                //         undefined,
+                //         artistInfo.largeImageUrl || artistInfo.mediumImageUrl || artistInfo.smallImageUrl,
+                //     );
+                // }
             }
 
             const Artist = ArtistID3Schema.parse({
