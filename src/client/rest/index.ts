@@ -46,6 +46,7 @@ import createPlaylist from './createPlaylist.ts';
 import updatePlaylist from './updatePlaylist.ts';
 import getPlaylist from './getPlaylist.ts';
 import getPlaylists from './getPlaylists.ts';
+import deletePlaylist from './deletePlaylist.ts';
 
 restRoutes.route('/', ping);
 restRoutes.route('/', getLicense);
@@ -91,5 +92,6 @@ restRoutes.route('/', createPlaylist);
 restRoutes.route('/', updatePlaylist);
 restRoutes.route('/', getPlaylist);
 restRoutes.route('/', getPlaylists);
+restRoutes.route('/', deletePlaylist);
 
 export default restRoutes;
