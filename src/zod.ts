@@ -264,6 +264,22 @@ export const UserSchema = z.object({
     subsonic: SubsonicUserSchema,
 });
 
+
+
+export const PlaylistSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+    owner: z.string(),
+    public: z.boolean().default(false),
+    created: z.date(),
+    changed: z.date(),
+    songCount: z.number(),
+    duration: z.number(),
+    entry: z.array(z.string()).default([]),
+    comment: z.string().optional(),
+    coverArt: z.string().optional(),
+});
+
 export type userData = z.infer<typeof userDataSchema>;
 export type CoverArt = z.infer<typeof CoverArtSchema>;
 export type ConfigTranscodingOption = z.infer<typeof ConfigTranscodingOptionSchema>;
@@ -288,6 +304,7 @@ export type PlayQueue = z.infer<typeof PlayQueueSchema>;
 export type SubsonicUser = z.infer<typeof SubsonicUserSchema>;
 export type BackendUser = z.infer<typeof BackendUserSchema>;
 export type User = z.infer<typeof UserSchema>;
+export type Playlist = z.infer<typeof PlaylistSchema>;
 export interface nowPlaying {
     track: SongID3;
     minutesAgo: Date;
