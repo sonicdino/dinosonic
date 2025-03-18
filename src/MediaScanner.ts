@@ -24,7 +24,6 @@ import { Genre } from './zod.ts';
 import { getAlbumInfo, getArtistInfo } from './LastFM.ts';
 
 const seenFiles = new Set<string>();
-const seenTrackIds = new Set<string>();
 const PLACEHOLDER_SEPARATORS = [';', '/'];
 const separators = PLACEHOLDER_SEPARATORS;
 
@@ -64,7 +63,7 @@ export async function scanMediaDirectories(database: Deno.Kv, directories: strin
 
 // TODO: Possibly optimize cleanup functions
 async function cleanupTracks() {
-    const removedTrackIds = new Set<string>();
+    const seenTrackIds = new Set<string>();
 
     for await (const entry of database.list({ prefix: ['filePathToId'] })) {
         const filePath = entry.key[1] as string;
@@ -74,7 +73,6 @@ async function cleanupTracks() {
             logger.info(`❌ Removing missing file track: ${trackId}`);
             await database.delete(['tracks', trackId]);
             await database.delete(entry.key);
-            removedTrackIds.add(trackId);
         }
     }
 
@@ -88,7 +86,6 @@ async function cleanupTracks() {
             if (!filePathEntry.value) {
                 logger.info(`⚠️ Track missing in filePathToId: ${trackId}`);
                 await database.delete(['tracks', trackId]);
-                removedTrackIds.add(trackId);
             }
         }
     }
@@ -110,6 +107,8 @@ async function cleanupTracks() {
             await database.set(['playlists', playlist.id], playlist);
         }
     }
+
+    return seenTrackIds.clear();
 }
 
 async function cleanupAlbumAndArtist() {
