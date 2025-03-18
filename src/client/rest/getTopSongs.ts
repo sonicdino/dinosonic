@@ -13,6 +13,8 @@ async function handlegetTopSongs(c: Context) {
     const artistName = await getField(c, 'artist') || '';
     const count = parseInt(await getField(c, 'count') || '50');
 
+    // TODO: If no LastFM api key provided, or LastFM is disabled, sort top songs by most listened.
+
     if (!artistName) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'artist'" });
     const artist = (await database.get(['artists', await getArtistIDByName(database, artistName) || ''])).value as Artist | null;
     if (!artist) return createResponse(c, {}, 'failed', { code: 70, message: 'Artist not found' });

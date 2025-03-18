@@ -264,8 +264,6 @@ export const UserSchema = z.object({
     subsonic: SubsonicUserSchema,
 });
 
-
-
 export const PlaylistSchema = z.object({
     id: z.string(),
     name: z.string(),

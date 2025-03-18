@@ -88,7 +88,6 @@ async function processMediaFile(database: Deno.Kv, filePath: string) {
         await database.set(['filePathToId', filePath], trackId);
     }
 
-    // Move existence check inside extractMetadata
     const metadata = await extractMetadata(filePath, trackId, database);
     if (!metadata) return;
 
@@ -278,7 +277,7 @@ async function handleAlbum(database: Deno.Kv, albumId: string, trackId: string, 
         id: albumId,
         name: metadata.common.album || 'Unknown Album',
         artist: albumArtists[0].name,
-        year: metadata.common.year,
+        year: metadata.common.year || 1970,
         coverArt: albumId,
         duration: metadata.format.duration ? Math.round(metadata.format.duration) : 0,
         genre: genres?.map((genre: Genre) => genre.name).join(', '),
@@ -404,10 +403,10 @@ async function extractMetadata(filePath: string, trackId: string, database: Deno
             : undefined;
 
         const replayGain = ReplayGainSchema.parse({
-            trackGain: metadata.common.replaygain_track_gain?.dB,
-            trackPeak: metadata.common.replaygain_track_peak?.dB,
-            albumGain: metadata.common.replaygain_track_gain?.dB,
-            albumPeak: metadata.common.replaygain_album_peak?.dB,
+            trackGain: metadata.common.replaygain_track_gain?.dB || undefined,
+            trackPeak: metadata.common.replaygain_track_peak?.dB || undefined,
+            albumGain: metadata.common.replaygain_track_gain?.dB || undefined,
+            albumPeak: metadata.common.replaygain_album_peak?.dB || undefined,
         });
 
         const contentType: Record<string, string> = {
@@ -462,8 +461,8 @@ async function extractMetadata(filePath: string, trackId: string, database: Deno
                 title: metadata.common.title || 'Unknown Title',
                 album: album,
                 artist: artists[0].name,
-                track: metadata.common.track.no,
-                year: metadata.common.year,
+                track: metadata.common.track.no || 0,
+                year: metadata.common.year || 1970,
                 genre: genres?.map((genre: Genre) => genre.name).join(', '),
                 coverArt: albumId, // Cover extraction not handled here
                 size: (await Deno.stat(filePath)).size,
@@ -476,7 +475,7 @@ async function extractMetadata(filePath: string, trackId: string, database: Deno
                 channelCount: metadata.format.numberOfChannels,
                 path: filePath,
                 isVideo: false,
-                discNumber: metadata.common.disk.no,
+                discNumber: metadata.common.disk.no || 0,
                 created: new Date().toISOString(),
                 albumId,
                 artistId: artists[0].id,
