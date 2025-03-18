@@ -7,30 +7,30 @@ const createPlaylist = new Hono();
 async function handleCreatePlaylist(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
-    
+
     if (!isValidated.playlistRole) {
-        return createResponse(c, {}, 'failed', { 
-            code: 50, 
-            message: 'You do not have permission to create or modify playlists'
+        return createResponse(c, {}, 'failed', {
+            code: 50,
+            message: 'You do not have permission to create or modify playlists',
         });
     }
-    
+
     // Get parameters
     const playlistId = await getField(c, 'playlistId');
     const name = await getField(c, 'name');
     const songIds = await getFields(c, 'songId') || [];
-    
+
     // Validate parameters based on whether we're creating or updating
     if (!playlistId && !name) {
-        return createResponse(c, {}, 'failed', { 
-            code: 10, 
-            message: "Missing required parameter: either 'playlistId' (for updating) or 'name' (for creating)" 
+        return createResponse(c, {}, 'failed', {
+            code: 10,
+            message: "Missing required parameter: either 'playlistId' (for updating) or 'name' (for creating)",
         });
     }
-    
+
     let playlist: Playlist | null = null;
     let isUpdate = false;
-    
+
     // Check if we're updating an existing playlist
     if (playlistId) {
         isUpdate = true;
@@ -38,31 +38,31 @@ async function handleCreatePlaylist(c: Context) {
         if (!playlist) {
             return createResponse(c, {}, 'failed', { code: 70, message: 'Playlist not found' });
         }
-        
+
         // Check ownership
         if (playlist.owner !== isValidated.username && !isValidated.adminRole) {
-            return createResponse(c, {}, 'failed', { 
-                code: 50, 
-                message: 'You do not have permission to modify this playlist' 
+            return createResponse(c, {}, 'failed', {
+                code: 50,
+                message: 'You do not have permission to modify this playlist',
             });
         }
     }
-    
+
     // Calculate total duration and collect valid songs
     let totalDuration = 0;
     const validSongIds = [];
     const entries = [];
-    
+
     // Validate songs and calculate duration
     for (const songId of songIds) {
         const song = (await database.get(['tracks', songId])).value as Song | null;
         if (!song) continue; // Skip invalid song IDs
-        
+
         totalDuration += song.subsonic.duration || 0;
         validSongIds.push(songId);
         entries.push(song.subsonic);
     }
-    
+
     // Create new playlist or update existing one
     if (!isUpdate) {
         // Generate a new ID for the playlist
@@ -71,7 +71,7 @@ async function handleCreatePlaylist(c: Context) {
         const newId = lastId + 1;
         await database.set(idKey, newId);
         const newPlaylistId = `p${newId}`;
-        
+
         playlist = PlaylistSchema.parse({
             id: newPlaylistId,
             name: name as string,
@@ -91,29 +91,29 @@ async function handleCreatePlaylist(c: Context) {
         playlist.songCount = validSongIds.length;
         playlist.duration = totalDuration;
     }
-    
+
     // Save playlist to database
     if (playlist) {
         await database.set(['playlists', playlist.id], playlist);
-        
+
         // Create response with entry objects
         const responsePlaylist = {
             id: playlist.id,
             name: playlist.name,
             owner: playlist.owner,
             public: playlist.public,
-            created: playlist.created.toISOString(),
-            changed: playlist.changed.toISOString(),
+            created: (playlist.created as Date).toISOString(),
+            changed: (playlist.changed as Date).toISOString(),
             songCount: playlist.songCount,
             duration: playlist.duration,
             entry: entries,
             comment: playlist.comment,
-            coverArt: playlist.coverArt
+            coverArt: playlist.coverArt,
         };
-        
+
         return createResponse(c, { playlist: responsePlaylist }, 'ok');
     }
-    
+
     return createResponse(c, {}, 'failed', { code: 0, message: 'Failed to create/update playlist' });
 }
 

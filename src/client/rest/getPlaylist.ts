@@ -7,58 +7,55 @@ const getPlaylist = new Hono();
 async function handleGetPlaylist(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
-    
+
     // Get the playlist ID parameter
     const playlistId = await getField(c, 'id');
-    
+
     // Validate required parameter
     if (!playlistId) {
-        return createResponse(c, {}, 'failed', { 
-            code: 10, 
-            message: "Missing required parameter: 'id'" 
+        return createResponse(c, {}, 'failed', {
+            code: 10,
+            message: "Missing required parameter: 'id'",
         });
     }
-    
+
     // Retrieve the playlist
     const playlist = (await database.get(['playlists', playlistId])).value as Playlist | null;
     if (!playlist) {
-        return createResponse(c, {}, 'failed', { 
-            code: 70, 
-            message: 'Playlist not found' 
+        return createResponse(c, {}, 'failed', {
+            code: 70,
+            message: 'Playlist not found',
         });
     }
-    
+
     // Check if user has access to the playlist
     if (!playlist.public && playlist.owner !== isValidated.username && !isValidated.adminRole) {
-        return createResponse(c, {}, 'failed', { 
-            code: 50, 
-            message: 'You do not have permission to view this playlist' 
+        return createResponse(c, {}, 'failed', {
+            code: 50,
+            message: 'You do not have permission to view this playlist',
         });
     }
-    
+
     // Build the song entries
     const entries = [];
     for (const songId of playlist.entry) {
-        const song = (await database.get(['tracks', songId])).value as Song | undefined;
+        const song = (await database.get(['tracks', songId as string])).value as Song | undefined;
         if (!song) continue; // Skip invalid song IDs
-        
+
         // Get user-specific metadata for this song
-        const userData = (await database.get(['userData', isValidated.username, 'track', songId])).value as userData | undefined;
-        
-        // Clone the song to avoid modifying the original
-        const songEntry = { ...song.subsonic };
-        
+        const userData = (await database.get(['userData', isValidated.username, 'track', songId as string])).value as userData | undefined;
+
         // Apply user-specific metadata if available
         if (userData) {
-            if (userData.starred) songEntry.starred = userData.starred.toISOString();
-            if (userData.played) songEntry.played = userData.played.toISOString();
-            if (userData.playCount) songEntry.playCount = userData.playCount;
-            if (userData.userRating) songEntry.userRating = userData.userRating;
+            if (userData.starred) song.subsonic.starred = userData.starred.toISOString();
+            if (userData.played) song.subsonic.played = userData.played.toISOString();
+            if (userData.playCount) song.subsonic.playCount = userData.playCount;
+            if (userData.userRating) song.subsonic.userRating = userData.userRating;
         }
-        
-        entries.push(songEntry);
+
+        entries.push(song.subsonic);
     }
-    
+
     // Format the response according to Subsonic API
     const response = {
         id: playlist.id,
@@ -69,13 +66,11 @@ async function handleGetPlaylist(c: Context) {
         changed: playlist.changed.toISOString(),
         songCount: playlist.songCount,
         duration: playlist.duration,
-        entry: entries
+        comment: playlist.comment,
+        coverArt: playlist.coverArt,
+        entry: entries,
     };
-    
-    // Add optional fields if they exist
-    if (playlist.comment) response.comment = playlist.comment;
-    if (playlist.coverArt) response.coverArt = playlist.coverArt;
-    
+
     return createResponse(c, { playlist: response }, 'ok');
 }
 
