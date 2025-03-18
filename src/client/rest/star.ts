@@ -89,7 +89,7 @@ async function handlestar(c: Context) {
         }
     }
 
-    // TODO: Sync with LastFM.
+    // TODO: Sync with LastFM. T his is only possible after UI is done.
 
     return createResponse(c, {}, 'ok');
 }

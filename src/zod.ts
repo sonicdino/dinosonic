@@ -114,7 +114,7 @@ export const SongID3Schema = z.object({
     discNumber: z.number().default(0),
     created: z.string().optional(),
     starred: z.string().optional(),
-    albumId: z.string().optional(),
+    albumId: z.string(),
     artistId: z.string().optional(),
     type: z.string().optional(),
     mediaType: z.string().optional(),
@@ -273,7 +273,7 @@ export const PlaylistSchema = z.object({
     changed: z.date(),
     songCount: z.number(),
     duration: z.number(),
-    entry: z.array(z.string()).default([]),
+    entry: z.array(z.string().or(SongID3Schema)).default([]),
     comment: z.string().optional(),
     coverArt: z.string().optional(),
 });

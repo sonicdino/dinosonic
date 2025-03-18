@@ -35,20 +35,34 @@ async function handleScrobble(c: Context) {
 
     if (submission) {
         await database.delete(['nowPlaying', isValidated.username, 'client', client, 'track', track.subsonic.id]);
-        let userData = (await database.get(['userData', isValidated.username, 'track', track.subsonic.id])).value as userData | undefined;
-        if (!userData) {
-            userData = userDataSchema.parse({
+        let userTrackData = (await database.get(['userData', isValidated.username, 'track', track.subsonic.id])).value as userData | undefined;
+        if (!userTrackData) {
+            userTrackData = userDataSchema.parse({
                 id: track.subsonic.id,
                 played: time,
                 playCount: 1,
             });
         } else {
-            userData.played = time;
-            userData.playCount = (userData.playCount || 0) + 1;
+            userTrackData.played = time;
+            userTrackData.playCount = (userTrackData.playCount || 0) + 1;
         }
-        await database.set(['userData', isValidated.username, 'track', track.subsonic.id], userData);
+
+        let userAlbumData = (await database.get(['userData', isValidated.username, 'album', track.subsonic.albumId])).value as userData | undefined;
+        if (!userAlbumData) {
+            userAlbumData = userDataSchema.parse({
+                id: track.subsonic.id,
+                played: time,
+                playCount: 1,
+            });
+        } else {
+            userAlbumData.played = time;
+            userAlbumData.playCount = (userTrackData.playCount || 0) + 1;
+        }
+
+        await database.set(['userData', isValidated.username, 'track', track.subsonic.id], userTrackData);
+        await database.set(['userData', isValidated.username, 'album', track.subsonic.id], userAlbumData);
     }
-    // TODO: LastFM Scrobble.
+    // TODO: LastFM Scrobble. This is only possible after UI is done.
 
     return createResponse(c, {}, 'ok');
 }

@@ -2,7 +2,7 @@
 import { walk } from 'walk';
 import { IAudioMetadata, IPicture, parseFile } from 'music-metadata';
 import * as path from 'path';
-import { config, database, exists, logger, separatorsToRegex } from './util.ts';
+import { config, database, exists, getNextId, logger, separatorsToRegex } from './util.ts';
 import {
     Album,
     AlbumID3Artists,
@@ -14,6 +14,7 @@ import {
     ArtistID3Schema,
     ArtistInfoSchema,
     CoverArt,
+    Playlist,
     ReplayGainSchema,
     Song,
     SongSchema,
@@ -23,6 +24,7 @@ import { Genre } from './zod.ts';
 import { getAlbumInfo, getArtistInfo } from './LastFM.ts';
 
 const seenFiles = new Set<string>();
+const seenTrackIds = new Set<string>();
 const PLACEHOLDER_SEPARATORS = [';', '/'];
 const separators = PLACEHOLDER_SEPARATORS;
 
@@ -53,19 +55,110 @@ export async function scanMediaDirectories(database: Deno.Kv, directories: strin
         await scanDirectory(database, dir);
     }
 
-    for await (const entry of database.list({ prefix: ['filePathToId'] })) {
-        const filePath = entry.key[1] as string;
-        if (!seenFiles.has(filePath)) {
-            const trackId = entry.value as string;
-            await database.delete(['tracks', trackId]);
-            await database.delete(entry.key);
-            logger.info(`❌ Removed: ${trackId}`);
-        }
-    }
-
+    await cleanupTracks();
+    await cleanupAlbumAndArtist();
     seenFiles.clear();
     scanStatus.scanning = false;
     logger.info('✅ Media scan complete.');
+}
+
+// TODO: Possibly optimize cleanup functions
+async function cleanupTracks() {
+    const removedTrackIds = new Set<string>();
+
+    for await (const entry of database.list({ prefix: ['filePathToId'] })) {
+        const filePath = entry.key[1] as string;
+        const trackId = entry.value as string;
+
+        if (!seenFiles.has(filePath)) {
+            logger.info(`❌ Removing missing file track: ${trackId}`);
+            await database.delete(['tracks', trackId]);
+            await database.delete(entry.key);
+            removedTrackIds.add(trackId);
+        }
+    }
+
+    for await (const trackEntry of database.list({ prefix: ['tracks'] })) {
+        const trackId = trackEntry.key[1] as string;
+        const track = trackEntry.value as Song | undefined;
+
+        if (track) {
+            seenTrackIds.add(trackId);
+            const filePathEntry = await database.get(['filePathToId', track.subsonic.path]);
+            if (!filePathEntry.value) {
+                logger.info(`⚠️ Track missing in filePathToId: ${trackId}`);
+                await database.delete(['tracks', trackId]);
+                removedTrackIds.add(trackId);
+            }
+        }
+    }
+
+    for await (const userDataEntry of database.list({ prefix: ['userData'] })) {
+        if (userDataEntry.key.length === 4, userDataEntry.key[2] === 'track' && !seenTrackIds.has(userDataEntry.key[3] as string)) {
+            logger.info(`❌ Removing user data for missing track: ${userDataEntry.key[3] as string}`);
+            await database.delete(userDataEntry.key);
+        }
+    }
+
+    for await (const playlistEntry of database.list({ prefix: ['playlists'] })) {
+        const playlist = playlistEntry.value as Playlist;
+        const originalLength = playlist.entry.length;
+        playlist.entry = playlist.entry.filter((trackId) => !seenTrackIds.has(trackId as string));
+
+        if (playlist.entry.length !== originalLength) {
+            logger.info(`📝 Updated playlist "${playlist.name}", removed missing tracks.`);
+            await database.set(['playlists', playlist.id], playlist);
+        }
+    }
+}
+
+async function cleanupAlbumAndArtist() {
+    const albumsInUse = new Set<string>();
+    const artistsInUse = new Set<string>();
+
+    for await (const trackEntry of database.list({ prefix: ['tracks'] })) {
+        const track = trackEntry.value as Song;
+        if (track.subsonic.albumId) albumsInUse.add(track.subsonic.albumId);
+        for (const artist of track.subsonic.artists) {
+            artistsInUse.add(artist.id);
+        }
+    }
+
+    for await (const albumEntry of database.list({ prefix: ['albums'] })) {
+        const albumId = albumEntry.key[1] as string;
+
+        if (!albumsInUse.has(albumId)) {
+            logger.info(`❌ Removing orphaned album: ${albumId}`);
+            await database.delete(['albums', albumId]);
+            continue;
+        }
+
+        const album = albumEntry.value as Album;
+        for (const artist of album.subsonic.artists) {
+            artistsInUse.add(artist.id);
+        }
+    }
+
+    for await (const artistEntry of database.list({ prefix: ['artists'] })) {
+        const artistId = artistEntry.key[1] as string;
+
+        if (!artistsInUse.has(artistId)) {
+            logger.info(`❌ Removing orphaned artist: ${artistId}`);
+            await database.delete(['artists', artistId]);
+        }
+    }
+
+    for await (const userDataEntry of database.list({ prefix: ['userData'] })) {
+        if (userDataEntry.key.length === 4, userDataEntry.key[2] === 'artist' && !artistsInUse.has(userDataEntry.key[3] as string)) {
+            logger.info(`❌ Removing user data for missing artist: ${userDataEntry.key[3] as string}`);
+            await database.delete(userDataEntry.key);
+        }
+
+        if (userDataEntry.key.length === 4, userDataEntry.key[2] === 'album' && !albumsInUse.has(userDataEntry.key[3] as string)) {
+            logger.info(`❌ Removing user data for missing album: ${userDataEntry.key[3] as string}`);
+            await database.delete(userDataEntry.key);
+        }
+    }
 }
 
 async function scanDirectory(database: Deno.Kv, dir: string) {
@@ -93,14 +186,6 @@ async function processMediaFile(database: Deno.Kv, filePath: string) {
 
     logger.info(`📀 Updating metadata for ${filePath}`);
     await database.set(['tracks', trackId], metadata);
-}
-
-async function getNextId(database: Deno.Kv, type: 't' | 'a' | 'A' | 'c'): Promise<string> {
-    const idKey = ['counters', type];
-    const lastId = (await database.get(idKey)).value as number || 0;
-    const newId = lastId + 1;
-    await database.set(idKey, newId);
-    return `${type}${newId}`;
 }
 
 export async function getArtistIDByName(database: Deno.Kv, name: string): Promise<string | undefined> {
@@ -285,7 +370,7 @@ async function handleAlbum(database: Deno.Kv, albumId: string, trackId: string, 
         created: (new Date(metadata.common.date || '1970-1-1')).toISOString(),
         artistId: albumArtists[0].id,
         songCount: 1,
-        recordLabels: [{ name: 'TODO: Add support for record labels' }],
+        // recordLabels: [{ name: 'TODO: Add support for record labels' }],
         musicBrainzId: undefined,
         artists: albumArtists,
         displayArtist: albumArtists.map((artist) => artist.name).join(', '),
@@ -293,7 +378,6 @@ async function handleAlbum(database: Deno.Kv, albumId: string, trackId: string, 
         originalReleaseDate,
         releaseDate: originalReleaseDate,
         song: [trackId],
-        // TODO: Disc titles.
         discTitles: [
             {
                 disc: metadata.common.disk.no || 0,

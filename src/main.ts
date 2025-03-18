@@ -1,7 +1,7 @@
 import { Config, ConfigSchema, nowPlaying, SubsonicUserSchema } from './zod.ts';
 import { scanMediaDirectories } from './MediaScanner.ts';
 import { parseArgs } from 'parse-args';
-import { logger, SERVER_VERSION, setConstants, setupLogger } from './util.ts';
+import { encryptForTokenAuth, logger, SERVER_VERSION, setConstants, setupLogger } from './util.ts';
 import restRoutes from './client/rest/index.ts';
 // import apiRoutes from "./client/api/index.ts";
 import { Context, Hono, Next } from 'hono';
@@ -124,11 +124,12 @@ setInterval(cleanupNowPlaying, 60 * 1000);
 cleanupNowPlaying();
 
 if (!(await database.get(['users', 'admin'])).value) {
-    // TODO: add Logging. Also not to store password as plainText.
+    logger.info("Admin user doesn't exist in the database. Creating one.");
+
     await database.set(['users', 'admin'], {
         backend: {
             username: 'admin',
-            password: config.default_admin_password,
+            password: await encryptForTokenAuth(config.default_admin_password),
         },
         subsonic: SubsonicUserSchema.parse({
             username: 'admin',

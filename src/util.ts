@@ -13,6 +13,8 @@ export let database: Deno.Kv;
 export let config: Config;
 export let logger = log.getLogger();
 
+let ENCRYPTION_KEY: Promise<CryptoKey>;
+
 export const ERROR_MESSAGES: Record<number, string> = {
     0: 'A generic error.',
     10: 'Required parameter is missing.',
@@ -54,6 +56,14 @@ function logFormatter(logRecord: log.LogRecord): string {
     return `${bold(timestamp)} [${levelColor(logRecord.levelName)}] ${logRecord.msg}`;
 }
 
+export async function getNextId(database: Deno.Kv, type: 't' | 'a' | 'A' | 'p'): Promise<string> {
+    const idKey = ['counters', type];
+    const lastId = (await database.get(idKey)).value as number || 0;
+    const newId = lastId + 1;
+    await database.set(idKey, newId);
+    return `${type}${newId}`;
+}
+
 export async function setupLogger(logLevel: string) {
     logLevel = logLevel.toUpperCase();
 
@@ -76,7 +86,9 @@ export async function setupLogger(logLevel: string) {
 
 export function setConstants(Database: Deno.Kv, Config: Config) {
     config = Config;
-    return database = Database;
+    database = Database;
+    ENCRYPTION_KEY = getOrCreateEncryptionKey();
+    return;
 }
 
 export function separatorsToRegex(separators: string[]): RegExp {
@@ -130,6 +142,78 @@ export async function exists(path: string): Promise<boolean> {
     }
 }
 
+async function getOrCreateEncryptionKey(): Promise<CryptoKey> {
+    // Check if we have a stored key in the database
+    const keyData = (await database.get(['system', 'encryptionKey'])).value as string | undefined;
+
+    if (keyData) {
+        // If we have a stored key, import it
+        const keyBuffer = Uint8Array.from(atob(keyData), (c) => c.charCodeAt(0));
+        return await crypto.subtle.importKey(
+            'raw',
+            keyBuffer,
+            { name: 'AES-GCM' },
+            false,
+            ['encrypt', 'decrypt'],
+        );
+    } else {
+        // If we don't have a stored key, create a new one
+        const newKey = await crypto.subtle.generateKey(
+            { name: 'AES-GCM', length: 256 },
+            true, // extractable
+            ['encrypt', 'decrypt'],
+        );
+
+        // Export the key to store it
+        const exportedKey = await crypto.subtle.exportKey('raw', newKey);
+        const keyBuffer = new Uint8Array(exportedKey);
+        const keyString = btoa(String.fromCharCode(...keyBuffer));
+
+        // Store the key in the database
+        await database.set(['system', 'encryptionKey'], keyString);
+
+        return newKey;
+    }
+}
+
+// TODO: If these functions can be further improved, improve.
+
+// Function to encrypt password for token auth
+export async function encryptForTokenAuth(password: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+
+    const encryptedData = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        await ENCRYPTION_KEY,
+        data,
+    );
+
+    // Combine IV and encrypted data
+    const combined = new Uint8Array(iv.length + encryptedData.byteLength);
+    combined.set(iv, 0);
+    combined.set(new Uint8Array(encryptedData), iv.length);
+
+    return btoa(String.fromCharCode(...combined));
+}
+
+// Function to decrypt password for token auth
+async function decryptForTokenAuth(encryptedData: string): Promise<string> {
+    const combined = Uint8Array.from(atob(encryptedData), (c) => c.charCodeAt(0));
+    const iv = combined.slice(0, 12);
+    const ciphertext = combined.slice(12);
+
+    const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv },
+        await ENCRYPTION_KEY,
+        ciphertext,
+    );
+
+    const decoder = new TextDecoder();
+    return decoder.decode(decrypted);
+}
+
 /**
  * Creates a standardized OpenSubsonic response
  */
@@ -174,25 +258,44 @@ export async function validateAuth(c: Context): Promise<Response | SubsonicUser>
     const user = (await database.get(['users', username.toLowerCase()])).value as User | null;
     if (!user) return createResponse(c, {}, 'failed', { code: 40, message: ERROR_MESSAGES[40] });
 
+    // Temporary hack to turn users who had plaintext as their stored password on db to have encrypted passwords.
+    // This will be removed on a future release. If by then your stored users are still storing plaintext in their db,
+    // Either A: Manually encrypt them yourself using the code here, ir
+    // B: Wipe the database.
+    try {
+        if (user.backend.password) await decryptForTokenAuth(user.backend.password);
+    } catch (_) {
+        user.backend.password = await encryptForTokenAuth(user.backend.password);
+        await database.set(['users', username.toLowerCase()], user);
+    }
+
     // ✅ Token Authentication
     if (token && salt) {
-        const expectedToken = generateTokenHash(user.backend.password, salt);
-        if (expectedToken !== token) return createResponse(c, {}, 'failed', { code: 40, message: ERROR_MESSAGES[40] });
+        // Decrypt the stored password to use for token generation
+        const originalPassword = await decryptForTokenAuth(user.backend.password);
+        const expectedToken = generateTokenHash(originalPassword, salt);
+
+        if (expectedToken !== token) {
+            return createResponse(c, {}, 'failed', { code: 40, message: ERROR_MESSAGES[40] });
+        }
         return user.subsonic;
     }
 
     // ✅ Basic Authentication
     if (password) {
+        let plainPassword = password;
+
+        // Handle encoded passwords
         if (password.startsWith('enc:')) {
-            const decodedPassword = atob(password.slice(4));
-            if (decodedPassword !== user.backend.password) {
-                return createResponse(c, {}, 'failed', { code: 40, message: ERROR_MESSAGES[40] });
-            }
-        } else {
-            if (password !== user.backend.password) {
-                return createResponse(c, {}, 'failed', { code: 40, message: ERROR_MESSAGES[40] });
-            }
+            plainPassword = atob(password.slice(4));
         }
+
+        // Compare with stored hash
+        const originalPassword = await decryptForTokenAuth(user.backend.password);
+        if (originalPassword !== plainPassword) {
+            return createResponse(c, {}, 'failed', { code: 40, message: ERROR_MESSAGES[40] });
+        }
+
         return user.subsonic;
     }
 

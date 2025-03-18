@@ -15,16 +15,8 @@ async function handleDeletePlaylist(c: Context) {
         });
     }
 
-    // Get the required playlist ID parameter
     const playlistId = await getField(c, 'id');
-
-    // Validate required parameter
-    if (!playlistId) {
-        return createResponse(c, {}, 'failed', {
-            code: 10,
-            message: "Missing required parameter: 'id'",
-        });
-    }
+    if (!playlistId) return createResponse(c, {}, 'failed', { code: 10, message: "Missing required parameter: 'id'" });
 
     // Check if the playlist exists
     const playlist = (await database.get(['playlists', playlistId])).value as Playlist | null;
@@ -44,10 +36,8 @@ async function handleDeletePlaylist(c: Context) {
         });
     }
 
-    // Delete the playlist from the database
     await database.delete(['playlists', playlistId]);
 
-    // Return success response
     return createResponse(c, {}, 'ok');
 }
 

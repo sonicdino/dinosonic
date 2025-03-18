@@ -10,23 +10,11 @@ async function handleGetPlaylist(c: Context) {
 
     // Get the playlist ID parameter
     const playlistId = await getField(c, 'id');
-
-    // Validate required parameter
-    if (!playlistId) {
-        return createResponse(c, {}, 'failed', {
-            code: 10,
-            message: "Missing required parameter: 'id'",
-        });
-    }
+    if (!playlistId) return createResponse(c, {}, 'failed', { code: 10, message: "Missing required parameter: 'id'" });
 
     // Retrieve the playlist
     const playlist = (await database.get(['playlists', playlistId])).value as Playlist | null;
-    if (!playlist) {
-        return createResponse(c, {}, 'failed', {
-            code: 70,
-            message: 'Playlist not found',
-        });
-    }
+    if (!playlist) return createResponse(c, {}, 'failed', { code: 70, message: 'Playlist not found' });
 
     // Check if user has access to the playlist
     if (!playlist.public && playlist.owner !== isValidated.username && !isValidated.adminRole) {
@@ -40,12 +28,9 @@ async function handleGetPlaylist(c: Context) {
     const entries = [];
     for (const songId of playlist.entry) {
         const song = (await database.get(['tracks', songId as string])).value as Song | undefined;
-        if (!song) continue; // Skip invalid song IDs
+        if (!song) continue;
 
-        // Get user-specific metadata for this song
         const userData = (await database.get(['userData', isValidated.username, 'track', songId as string])).value as userData | undefined;
-
-        // Apply user-specific metadata if available
         if (userData) {
             if (userData.starred) song.subsonic.starred = userData.starred.toISOString();
             if (userData.played) song.subsonic.played = userData.played.toISOString();
@@ -55,23 +40,21 @@ async function handleGetPlaylist(c: Context) {
 
         entries.push(song.subsonic);
     }
-
-    // Format the response according to Subsonic API
-    const response = {
-        id: playlist.id,
-        name: playlist.name,
-        owner: playlist.owner,
-        public: playlist.public,
-        created: playlist.created.toISOString(),
-        changed: playlist.changed.toISOString(),
-        songCount: playlist.songCount,
-        duration: playlist.duration,
-        comment: playlist.comment,
-        coverArt: playlist.coverArt,
-        entry: entries,
-    };
-
-    return createResponse(c, { playlist: response }, 'ok');
+    return createResponse(c, {
+        playlist: {
+            id: playlist.id,
+            name: playlist.name,
+            owner: playlist.owner,
+            public: playlist.public,
+            created: playlist.created.toISOString(),
+            changed: playlist.changed.toISOString(),
+            songCount: playlist.songCount,
+            duration: playlist.duration,
+            comment: playlist.comment,
+            coverArt: playlist.coverArt,
+            entry: entries,
+        },
+    }, 'ok');
 }
 
 getPlaylist.get('/getPlaylist', handleGetPlaylist);

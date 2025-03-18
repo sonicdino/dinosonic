@@ -1,6 +1,6 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, getField, getFields, validateAuth } from '../../util.ts';
-import { Playlist, PlaylistSchema, Song } from '../../zod.ts';
+import { createResponse, database, getField, getFields, getNextId, validateAuth } from '../../util.ts';
+import { Playlist, PlaylistSchema, Song, userData } from '../../zod.ts';
 
 const createPlaylist = new Hono();
 
@@ -15,12 +15,10 @@ async function handleCreatePlaylist(c: Context) {
         });
     }
 
-    // Get parameters
     const playlistId = await getField(c, 'playlistId');
     const name = await getField(c, 'name');
     const songIds = await getFields(c, 'songId') || [];
 
-    // Validate parameters based on whether we're creating or updating
     if (!playlistId && !name) {
         return createResponse(c, {}, 'failed', {
             code: 10,
@@ -35,9 +33,7 @@ async function handleCreatePlaylist(c: Context) {
     if (playlistId) {
         isUpdate = true;
         playlist = (await database.get(['playlists', playlistId])).value as Playlist | null;
-        if (!playlist) {
-            return createResponse(c, {}, 'failed', { code: 70, message: 'Playlist not found' });
-        }
+        if (!playlist) return createResponse(c, {}, 'failed', { code: 70, message: 'Playlist not found' });
 
         // Check ownership
         if (playlist.owner !== isValidated.username && !isValidated.adminRole) {
@@ -58,6 +54,14 @@ async function handleCreatePlaylist(c: Context) {
         const song = (await database.get(['tracks', songId])).value as Song | null;
         if (!song) continue; // Skip invalid song IDs
 
+        const userData = (await database.get(['userData', isValidated.username, 'track', songId])).value as userData | undefined;
+        if (userData) {
+            if (userData.starred) song.subsonic.starred = userData.starred.toISOString();
+            if (userData.played) song.subsonic.played = userData.played.toISOString();
+            if (userData.playCount) song.subsonic.playCount = userData.playCount;
+            if (userData.userRating) song.subsonic.userRating = userData.userRating;
+        }
+
         totalDuration += song.subsonic.duration || 0;
         validSongIds.push(songId);
         entries.push(song.subsonic);
@@ -66,11 +70,7 @@ async function handleCreatePlaylist(c: Context) {
     // Create new playlist or update existing one
     if (!isUpdate) {
         // Generate a new ID for the playlist
-        const idKey = ['counters', 'p'];
-        const lastId = (await database.get(idKey)).value as number || 0;
-        const newId = lastId + 1;
-        await database.set(idKey, newId);
-        const newPlaylistId = `p${newId}`;
+        const newPlaylistId = await getNextId(database, 'p');
 
         playlist = PlaylistSchema.parse({
             id: newPlaylistId,
@@ -96,22 +96,21 @@ async function handleCreatePlaylist(c: Context) {
     if (playlist) {
         await database.set(['playlists', playlist.id], playlist);
 
-        // Create response with entry objects
-        const responsePlaylist = {
-            id: playlist.id,
-            name: playlist.name,
-            owner: playlist.owner,
-            public: playlist.public,
-            created: (playlist.created as Date).toISOString(),
-            changed: (playlist.changed as Date).toISOString(),
-            songCount: playlist.songCount,
-            duration: playlist.duration,
-            entry: entries,
-            comment: playlist.comment,
-            coverArt: playlist.coverArt,
-        };
-
-        return createResponse(c, { playlist: responsePlaylist }, 'ok');
+        return createResponse(c, {
+            playlist: {
+                id: playlist.id,
+                name: playlist.name,
+                owner: playlist.owner,
+                public: playlist.public,
+                created: playlist.created.toISOString(),
+                changed: playlist.changed.toISOString(),
+                songCount: playlist.songCount,
+                duration: playlist.duration,
+                entry: entries,
+                comment: playlist.comment,
+                coverArt: playlist.coverArt,
+            },
+        }, 'ok');
     }
 
     return createResponse(c, {}, 'failed', { code: 0, message: 'Failed to create/update playlist' });

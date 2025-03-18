@@ -3,7 +3,7 @@ import { createResponse, database, getField, logger, separatorsToRegex, validate
 import { Song } from '../../zod.ts';
 
 const getLyricsBySongId = new Hono();
-// TODO: Integrade Separators.
+// TODO: Integrate Separators.
 const PLACEHOLDER_SEPARATORS = [';', '/'];
 const separators = PLACEHOLDER_SEPARATORS;
 
@@ -62,7 +62,6 @@ async function handlegetLyricsBySongId(c: Context) {
     }, 'ok');
 }
 
-// TODO: Debug logging
 async function fetchLyrics(trackName: string, artistName: string): Promise<string | null> {
     const artistNameGet = artistName.split(separatorsToRegex(separators))[0];
 

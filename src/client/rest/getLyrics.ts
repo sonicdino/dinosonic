@@ -68,7 +68,6 @@ function convertToLRC(lyrics: StructuredLyrics[]) {
     return lrcContent.trim();
 }
 
-// TODO: Debug logging
 async function fetchLyrics(trackName: string, artistName: string): Promise<string | null> {
     const artistNameGet = artistName.split(separatorsToRegex(separators))[0];
 
