@@ -71,9 +71,7 @@ export async function getArtistCover(artistName: string, database: Deno.Kv, clie
     const data = await response.json();
     const artist = data.artists.items[0];
 
-    if (!artist) {
-        throw new Error('Artist not found');
-    }
+    if (!artist) return [];
 
     if (artist.images?.length) {
         const images = artist.images.sort((a: Record<string, number>, b: Record<string, number>) => a.height - b.height);
@@ -86,5 +84,5 @@ export async function getArtistCover(artistName: string, database: Deno.Kv, clie
         }));
     }
 
-    return;
+    return [];
 }
