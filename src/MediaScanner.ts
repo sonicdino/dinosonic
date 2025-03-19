@@ -501,7 +501,7 @@ async function extractMetadata(filePath: string, trackId: string, database: Deno
 
         const lyrics = [];
         if (metadata.common.lyrics?.length) {
-            const syncedLyrics = metadata.common.lyrics?.find((lyrics) => lyrics.syncText.length)?.syncText.map((line) => {
+            const syncedLyrics = metadata.common.lyrics?.find((lyrics) => lyrics.syncText?.length)?.syncText.map((line) => {
                 return { start: line.timestamp, value: line.text };
             });
 
