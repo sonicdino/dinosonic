@@ -21,9 +21,11 @@ import {
     StructuredLyricsSchema,
 } from './zod.ts';
 import { Genre } from './zod.ts';
-import { getAlbumInfo, getArtistInfo } from './LastFM.ts';
+import { getAlbumInfo, getArtistCover, getArtistInfo } from './LastFM.ts';
 
 const seenFiles = new Set<string>();
+const seenTrackIds = new Set<string>();
+
 const PLACEHOLDER_SEPARATORS = [';', '/'];
 const separators = PLACEHOLDER_SEPARATORS;
 
@@ -64,8 +66,6 @@ export async function scanMediaDirectories(database: Deno.Kv, directories: strin
 
 // TODO: Possibly optimize cleanup functions
 async function cleanupTracks() {
-    const seenTrackIds = new Set<string>();
-
     for await (const entry of database.list({ prefix: ['filePathToId'] })) {
         const filePath = entry.key[1] as string;
         const trackId = entry.value as string;
@@ -108,8 +108,6 @@ async function cleanupTracks() {
             await database.set(['playlists', playlist.id], playlist);
         }
     }
-
-    return seenTrackIds.clear();
 }
 
 async function cleanupAlbumAndArtist() {
@@ -134,6 +132,16 @@ async function cleanupAlbumAndArtist() {
         }
 
         const album = albumEntry.value as Album;
+        const originalSongCount = album.subsonic.song.length;
+
+        // Remove tracks that are not in seenTrackIds
+        album.subsonic.song = album.subsonic.song.filter((trackId) => seenTrackIds.has(trackId as string));
+
+        // Only update the database if changes were made
+        if (album.subsonic.song.length !== originalSongCount) {
+            await database.set(albumEntry.key, album);
+        }
+
         for (const artist of album.subsonic.artists) {
             artistsInUse.add(artist.id);
         }
@@ -159,6 +167,10 @@ async function cleanupAlbumAndArtist() {
             await database.delete(userDataEntry.key);
         }
     }
+
+    albumsInUse.clear();
+    artistsInUse.clear();
+    seenTrackIds.clear();
 }
 
 async function scanDirectory(database: Deno.Kv, dir: string) {
@@ -439,30 +451,50 @@ async function handleLastFMMetadata() {
 
             const ArtistInfo = await getArtistInfo(artist.artist?.name, config.last_fm.api_key);
             if (ArtistInfo) {
+                const similarArtist = [];
+                let imageURLs = [];
+
+                if (ArtistInfo.artist.similar && ArtistInfo.artist.similar.artist?.length) {
+                    for (const artist of ArtistInfo.artist.similar.artist) {
+                        const artistId = await getArtistIDByName(database, artist.name);
+                        if (artistId) similarArtist.push(artistId);
+                    }
+                }
+
+                if (config.spotify?.enabled && config.spotify.client_id && config.spotify.client_secret) {
+                    imageURLs = await getArtistCover(artist.artist.name, database, config.spotify.client_id, config.spotify.client_secret);
+                }
+
+                const getImage = (size: 'small' | 'medium' | 'large') =>
+                    imageURLs?.find((i: Record<string, string>) => i.size === size)?.url ||
+                    ArtistInfo.artist?.image.find((i: Record<string, string>) => i.size === size)?.['#text'];
+
+                const imageData = {
+                    small: getImage('small'),
+                    medium: getImage('medium'),
+                    large: getImage('large'),
+                };
+
                 artist.artistInfo = ArtistInfoSchema.parse({
                     id: artist.artist.id,
                     biography: ArtistInfo.artist?.bio?.summary || '',
                     musicBrainzId: ArtistInfo.artist?.mbid,
                     lastFmUrl: ArtistInfo.artist?.url,
-                    smallImageUrl: ArtistInfo.artist?.image.find((i: Record<string, string>) => i.size === 'small')?.['#text'],
-                    mediumImageUrl: ArtistInfo.artist?.image.find((i: Record<string, string>) => i.size === 'medium')?.['#text'],
-                    largeImageUrl: ArtistInfo.artist?.image.find((i: Record<string, string>) => i.size === 'large')?.['#text'],
+                    smallImageUrl: imageData.small,
+                    mediumImageUrl: imageData.medium,
+                    largeImageUrl: imageData.large,
+                    similarArtist,
                 });
 
-                if ((artist.artistInfo.largeImageUrl || artist.artistInfo.mediumImageUrl || artist.artistInfo.smallImageUrl)) {
-                    // TODO: Get artist cover from spotify.
-                    await handleCoverArt(
-                        database,
-                        artist.artist.id,
-                        undefined,
-                        undefined,
-                        artist.artistInfo.largeImageUrl || artist.artistInfo.mediumImageUrl || artist.artistInfo.smallImageUrl,
-                    );
+                const coverArtUrl = imageData.large || imageData.medium || imageData.small;
+                if (coverArtUrl) {
+                    await handleCoverArt(database, artist.artist.id, undefined, undefined, coverArtUrl);
                 }
 
                 artist.lastFM = true;
                 artist.artist.musicBrainzId = artist.artistInfo.musicBrainzId;
-                artist.artist.artistImageUrl = artist.artistInfo.largeImageUrl || artist.artistInfo.mediumImageUrl || artist.artistInfo.smallImageUrl;
+                artist.artist.artistImageUrl = artist.artistInfo.largeImageUrl || artist.artistInfo.mediumImageUrl ||
+                    artist.artistInfo.smallImageUrl;
                 artist.artist.coverArt = artist.artist.id;
 
                 logger.debug(`📝 Updating LastFM metadata for artist: ${artist.artist.name}`);
@@ -493,8 +525,6 @@ async function extractMetadata(filePath: string, trackId: string, database: Deno
         const artists = await handleArtist(database, metadata.common.artist || 'Unknown Artist');
         const albumArtists = await handleArtist(database, metadata.common.albumartist || 'Unknown Artist');
         await handleAlbum(database, albumId, trackId, albumArtists, metadata);
-
-        // await getTrackInfo(database, metadata.common.title || '', artists[0].name, config.last_fm?.api_key);
 
         const genres: Genre[] | undefined = (typeof metadata.common.genre === 'string')
             ? (metadata.common.genre as string).split(separatorsToRegex(separators)).map((genre: string) => {

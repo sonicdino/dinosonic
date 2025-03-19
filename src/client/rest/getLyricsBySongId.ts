@@ -22,7 +22,7 @@ async function handlegetLyricsBySongId(c: Context) {
     if (!id) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });
     const track = (await database.get(['tracks', id])).value as Song | null;
     if (!track) return createResponse(c, {}, 'failed', { code: 70, message: 'Song not found' });
-    if (track.backend.lyrics) return createResponse(c, { lyricsList: { structuredLyrics: track.backend.lyrics } }, 'ok');
+    if (track.backend.lyrics?.length) return createResponse(c, { lyricsList: { structuredLyrics: track.backend.lyrics } }, 'ok');
 
     const lyrics = await fetchLyrics(track.subsonic.title, track.subsonic.artist);
     if (!lyrics) return createResponse(c, {}, 'ok');
@@ -56,7 +56,6 @@ async function handlegetLyricsBySongId(c: Context) {
             line: Lyrics.map(({ value }) => ({ value })),
         },
     ];
-
     return createResponse(c, {
         lyricsList: { structuredLyrics },
     }, 'ok');

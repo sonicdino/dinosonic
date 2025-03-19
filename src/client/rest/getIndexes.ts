@@ -22,7 +22,6 @@ async function handlegetIndexes(c: Context) {
         indexes[firstLetter].push(artist);
     }
 
-    // Dinosonic is not the only Subsonic-like server that does this tomfoolery.
     return createResponse(c, {
         indexes: {
             index: Object.entries(indexes)

@@ -71,6 +71,14 @@ if (configFile) {
         };
     }
 
+    if (Deno.env.get('DINO_SPOTIFY_ENABLED') || (Deno.env.get('DINO_SPOTIFY_CLIENT_ID') && Deno.env.get('DINO_SPOTIFY_CLIENT_SECRET'))) {
+        conf.spotify = {
+            enabled: Deno.env.get('DINO_SPOTIFY_ENABLED') === 'true',
+            client_id: Deno.env.get('DINO_SPOTIFY_CLIENT_ID'),
+            client_secret: Deno.env.get('DINO_SPOTIFY_CLIENT_SECRET'),
+        };
+    }
+
     if (Deno.env.get('DINO_TRANSCODING_ENABLED')) {
         conf.transcoding = {
             enabled: Deno.env.get('DINO_TRANSCODING_ENABLED') === 'true',

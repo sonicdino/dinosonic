@@ -1,6 +1,6 @@
 import { Context, Hono } from 'hono';
 import { createResponse, database, getField, validateAuth } from '../../util.ts';
-import { Album, Artist, Song } from '../../zod.ts';
+import { Album, Artist, ArtistID3, Song, userData } from '../../zod.ts';
 
 const getArtistInfo = new Hono();
 
@@ -17,9 +17,27 @@ async function handlegetArtistInfo(c: Context) {
     if (id.startsWith('a') || id.startsWith('t')) id = await getArtistIDByAlbumOrSongID(id);
     const artist = (await database.get(['artists', id])).value as Artist | undefined;
     if (!artist) return createResponse(c, {}, 'failed', { code: 70, message: 'Artist not found' });
+    if (!artist.artistInfo) return createResponse(c, {}, 'ok');
+    const similarArtist: ArtistID3[] = [];
+
+    for (const artistId of artist.artistInfo.similarArtist) {
+        const Artist = (await database.get(['artists', artistId as string])).value as Artist | undefined;
+        if (!Artist) continue;
+
+        const userData = (await database.get(['userData', isValidated.username, 'artist', artistId as string])).value as userData | undefined;
+        if (userData) {
+            if (userData.starred) Artist.artist.starred = userData.starred.toISOString();
+            if (userData.userRating) Artist.artist.userRating = userData.userRating;
+        }
+
+        // @ts-expect-error A weird error with Deno type checking i guess.
+        delete Artist.artist.album;
+
+        similarArtist.push(Artist.artist);
+    }
 
     return createResponse(c, {
-        [/(getArtistInfo2|getArtistInfo2\.view)$/.test(c.req.path) ? 'artistInfo2' : 'artistInfo']: artist.artistInfo,
+        [/(getArtistInfo2|getArtistInfo2\.view)$/.test(c.req.path) ? 'artistInfo2' : 'artistInfo']: { ...artist.artistInfo, similarArtist },
     }, 'ok');
 }
 

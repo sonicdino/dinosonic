@@ -26,12 +26,19 @@ export const ConfigLastFMOptionSchema = z.object({
     api_secret: z.string().optional(),
 });
 
+export const ConfigSpotifyOptionSchema = z.object({
+    enabled: z.boolean().default(false),
+    client_id: z.string().optional(),
+    client_secret: z.string().optional(),
+});
+
 export const ConfigSchema = z.object({
     port: z.number(),
     log_level: z.string().default('OFF'),
     data_folder: z.string(),
     transcoding: ConfigTranscodingOptionSchema.optional(),
     last_fm: ConfigLastFMOptionSchema.optional(),
+    spotify: ConfigSpotifyOptionSchema.optional(),
     music_folders: z.array(z.string()).default([]),
     scan_on_start: z.boolean().default(false),
     default_admin_password: z.string(),
