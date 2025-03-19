@@ -515,7 +515,7 @@ async function extractMetadata(filePath: string, trackId: string, database: Deno
                     displayTitle: metadata.common.title || 'Unknown Title',
                     lang: 'xxx',
                     synced: true,
-                    line: metadata.common.lyrics?.find((lyrics) => lyrics.syncText.length)?.syncText.map((line) => {
+                    line: metadata.common.lyrics?.find((lyrics) => lyrics.syncText?.length)?.syncText.map((line) => {
                         return { start: line.timestamp, value: line.text };
                     }),
                 }));
