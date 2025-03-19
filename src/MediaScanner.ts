@@ -454,7 +454,7 @@ async function handleLastFMMetadata() {
                 const similarArtist = [];
                 let imageURLs = [];
 
-                if (ArtistInfo.artist.similar && ArtistInfo.artist.similar.artist?.length) {
+                if (ArtistInfo.artist.similar && ArtistInfo.artist.similar?.artist?.length) {
                     for (const artist of ArtistInfo.artist.similar.artist) {
                         const artistId = await getArtistIDByName(database, artist.name);
                         if (artistId) similarArtist.push(artistId);
