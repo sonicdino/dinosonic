@@ -1,8 +1,18 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, getField, logger, validateAuth } from '../../util.ts';
+import { config, createResponse, database, exists, getField, logger, validateAuth } from '../../util.ts';
 import { CoverArt } from '../../zod.ts';
+import * as path from 'path';
 
 const getCoverArt = new Hono();
+const mimeToExt: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/png': 'png',
+    'image/gif': 'gif',
+    'image/webp': 'webp', // webp sucks.
+    'image/bmp': 'bmp',
+    'image/svg+xml': 'svg',
+};
 
 async function handlegetCoverArt(c: Context) {
     const isValidated = await validateAuth(c);
@@ -24,13 +34,29 @@ async function handlegetCoverArt(c: Context) {
         });
     }
 
+    const cacheDir = path.join(config.data_folder, 'cache');
+    if (!(await exists(cacheDir))) await Deno.mkdir(cacheDir);
+
+    const cacheCoversDir = path.join(cacheDir, 'covers');
+    if (!(await exists(cacheCoversDir))) await Deno.mkdir(cacheCoversDir);
+
+    const cachedCoverPath = path.join(cacheCoversDir, `${id}_${size}.${mimeToExt[Cover.mimeType] || 'jpg'}`);
+    if (await exists(cachedCoverPath)) {
+        return new Response(await Deno.readFile(cachedCoverPath), {
+            headers: {
+                'Content-Type': Cover.mimeType,
+                'Cache-Control': 'public, max-age=3600',
+            },
+        });
+    }
+
     const process = new Deno.Command('ffmpeg', {
-        args: ['-i', Cover.path, '-vf', `scale=${size}:${size}`, '-f', 'image2pipe', 'pipe:1'],
+        args: ['-i', Cover.path, '-vf', `scale=${size}:${size}`, '-y', cachedCoverPath],
         stdout: 'piped',
         stderr: 'piped',
     }).spawn();
 
-    const { success, stdout, stderr } = await process.output();
+    const { success, stderr } = await process.output();
 
     if (!success) {
         const errorMsg = new TextDecoder().decode(stderr);
@@ -43,7 +69,7 @@ async function handlegetCoverArt(c: Context) {
         });
     }
 
-    return new Response(stdout, {
+    return new Response(await Deno.readFile(cachedCoverPath), {
         headers: {
             'Content-Type': Cover.mimeType,
             'Cache-Control': 'public, max-age=3600',

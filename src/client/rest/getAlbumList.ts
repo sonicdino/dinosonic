@@ -32,25 +32,40 @@ async function handlegetAlbumList(c: Context) {
             Albums = Albums.sort((a, b) => (b.subsonic.year || 0) - (a.subsonic.year || 0));
             break;
 
-        case 'alphabeticalByName': {
+        case 'alphabeticalByName':
             Albums = Albums.sort((a, b) => a.subsonic.name.localeCompare(b.subsonic.name, undefined, { sensitivity: 'base' }));
             break;
-        }
+
+        case 'alphabeticalByArtist':
+            Albums = Albums.sort((a, b) => a.subsonic.artist.localeCompare(b.subsonic.artist, undefined, { sensitivity: 'base' }));
+            break;
 
         case 'highest': {
-            const userDatas = (await Array.fromAsync(database.list({ prefix: ['userData', 'admin', 'album'] }))).map(
+            const userDatas = (await Array.fromAsync(database.list({ prefix: ['userData', isValidated.username, 'album'] }))).map(
                 (entry) => (entry.value as userData),
             );
             const userRatings = new Map(userDatas.map((entry) => [entry.id, entry.userRating]));
             Albums = Albums.map((album) => ({
                 ...album,
-                rating: userRatings.get(album.subsonic.id) || 0, // Default to 0 if no rating is found
-            })).sort((a, b) => b.rating - a.rating);
+                userRating: userRatings.get(album.subsonic.id) || 0, // Default to 0 if no rating is found
+            })).sort((a, b) => b.userRating - a.userRating);
+            break;
+        }
+
+        case 'recent': {
+            const userDatas = (await Array.fromAsync(database.list({ prefix: ['userData', isValidated.username, 'album'] }))).map(
+                (entry) => (entry.value as userData),
+            );
+            const userPlayed = new Map(userDatas.map((entry) => [entry.id, entry.played]));
+            Albums = Albums.map((album) => ({
+                ...album,
+                played: userPlayed.get(album.subsonic.id) || new Date(0), // Default to 0 if no rating is found
+            })).sort((a, b) => b.played.getTime() - a.played.getTime());
             break;
         }
 
         case 'frequent': {
-            const userDatas = (await Array.fromAsync(database.list({ prefix: ['userData', 'admin', 'album'] }))).map(
+            const userDatas = (await Array.fromAsync(database.list({ prefix: ['userData', isValidated.username, 'album'] }))).map(
                 (entry) => (entry.value as userData),
             );
             const userPlaycount = new Map(userDatas.map((entry) => [entry.id, entry.playCount]));
@@ -60,10 +75,6 @@ async function handlegetAlbumList(c: Context) {
             })).sort((a, b) => b.playCount - a.playCount);
             break;
         }
-
-        case 'recent':
-            Albums = Albums.sort((a, b) => b.backend.dateAdded - a.backend.dateAdded);
-            break;
 
         case 'byYear':
             Albums = Albums.filter((album) => (album.subsonic.year || 0) >= (fromYear || 0) && (album.subsonic.year || 0) <= (toYear || 0));
@@ -95,7 +106,7 @@ async function handlegetAlbumList(c: Context) {
     }
 
     return createResponse(c, {
-        [c.req.path === '/rest/getAlbumList' ? 'albumList' : 'albumList2']: {
+        [/(getAlbumList2|getAlbumList2\.view)$/.test(c.req.path) ? 'albumList2' : 'albumList']: {
             album: album,
         },
     }, 'ok');

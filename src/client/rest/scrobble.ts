@@ -50,7 +50,7 @@ async function handleScrobble(c: Context) {
         let userAlbumData = (await database.get(['userData', isValidated.username, 'album', track.subsonic.albumId])).value as userData | undefined;
         if (!userAlbumData) {
             userAlbumData = userDataSchema.parse({
-                id: track.subsonic.id,
+                id: track.subsonic.albumId,
                 played: time,
                 playCount: 1,
             });
@@ -60,7 +60,7 @@ async function handleScrobble(c: Context) {
         }
 
         await database.set(['userData', isValidated.username, 'track', track.subsonic.id], userTrackData);
-        await database.set(['userData', isValidated.username, 'album', track.subsonic.id], userAlbumData);
+        await database.set(['userData', isValidated.username, 'album', track.subsonic.albumId], userAlbumData);
     }
     // TODO: LastFM Scrobble. This is only possible after UI is done.
 

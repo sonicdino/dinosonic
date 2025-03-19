@@ -19,7 +19,7 @@ async function handlegetArtistInfo(c: Context) {
     if (!artist) return createResponse(c, {}, 'failed', { code: 70, message: 'Artist not found' });
 
     return createResponse(c, {
-        [c.req.path === '/rest/getArtistInfo' ? 'artistInfo' : 'artistInfo2']: artist.artistInfo,
+        [/(getArtistInfo2|getArtistInfo2\.view)$/.test(c.req.path) ? 'artistInfo2' : 'artistInfo']: artist.artistInfo,
     }, 'ok');
 }
 

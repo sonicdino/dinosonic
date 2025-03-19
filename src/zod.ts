@@ -150,7 +150,7 @@ export const SongSchema = z.object({
 export const AlbumID3Schema = z.object({
     id: z.string(),
     name: z.string(),
-    artist: z.string().optional(),
+    artist: z.string(),
     year: z.number().optional(),
     coverArt: z.string().optional(),
     starred: z.string().optional(),
@@ -190,6 +190,7 @@ export const AlbumInfoSchema = z.object({
 export const AlbumSchema = z.object({
     backend: z.object({
         dateAdded: z.number(),
+        lastFM: z.boolean().default(false),
     }),
     albumInfo: AlbumInfoSchema.optional(),
     subsonic: AlbumID3Schema,
@@ -221,6 +222,7 @@ export const ArtistInfoSchema = z.object({
 });
 
 export const ArtistSchema = z.object({
+    lastFM: z.boolean().default(false),
     artistInfo: ArtistInfoSchema.optional(),
     artist: ArtistID3Schema,
 });

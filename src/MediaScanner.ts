@@ -56,6 +56,7 @@ export async function scanMediaDirectories(database: Deno.Kv, directories: strin
 
     await cleanupTracks();
     await cleanupAlbumAndArtist();
+    await handleLastFMMetadata();
     seenFiles.clear();
     scanStatus.scanning = false;
     logger.info('✅ Media scan complete.');
@@ -214,6 +215,7 @@ async function handleCoverArt(database: Deno.Kv, id: string, pictures?: IPicture
     const coversDir = path.join(config.data_folder, 'covers');
     const mimeToExt: Record<string, string> = {
         'image/jpeg': 'jpg',
+        'image/jpg': 'jpg',
         'image/png': 'png',
         'image/gif': 'gif',
         'image/webp': 'webp', // webp sucks.
@@ -302,32 +304,6 @@ async function handleAlbum(database: Deno.Kv, albumId: string, trackId: string, 
             }
         }
 
-        if (!exists.albumInfo && config.last_fm && config.last_fm.enabled && config.last_fm.api_key) {
-            const info = await getAlbumInfo(metadata.common.album || '', albumArtists[0].name, config.last_fm.api_key);
-
-            if (info) {
-                changes = true;
-                albumInfo = AlbumInfoSchema.parse({
-                    notes: info.album?.wiki?.summary || '',
-                    musicBrainzId: info.album?.mbid,
-                    lastFmUrl: info.album?.url,
-                    smallImageUrl: info.album?.image.find((i: Record<string, string>) => i.size === 'small')?.['#text'],
-                    mediumImageUrl: info.album?.image.find((i: Record<string, string>) => i.size === 'medium')?.['#text'],
-                    largeImageUrl: info.album?.image.find((i: Record<string, string>) => i.size === 'large')?.['#text'],
-                });
-
-                if ((albumInfo.largeImageUrl || albumInfo.mediumImageUrl || albumInfo.smallImageUrl)) {
-                    await handleCoverArt(
-                        database,
-                        albumId,
-                        undefined,
-                        undefined,
-                        albumInfo.largeImageUrl || albumInfo.mediumImageUrl || albumInfo.smallImageUrl,
-                    );
-                }
-            }
-        }
-
         if (changes) return database.set(['albums', albumId], { ...exists, albumInfo });
         else return;
     }
@@ -390,7 +366,6 @@ async function handleAlbum(database: Deno.Kv, albumId: string, trackId: string, 
             dateAdded: Date.now(),
         },
         subsonic: album,
-        albumInfo,
     });
 
     return database.set(['albums', albumId], Album);
@@ -404,46 +379,15 @@ async function handleArtist(database: Deno.Kv, artist: string) {
         const id = await getArtistIDByName(database, name) || await getNextId(database, 'A');
         const artistExists = (await database.get(['artists', id])).value as Artist | null;
 
-        if (!artistExists || (!artistExists.artistInfo?.id && config.last_fm?.api_key)) {
+        if (!artistExists) {
             // TODO: Logging
-            let artistInfo;
 
-            if (config.last_fm?.api_key) {
-                const ArtistInfo = await getArtistInfo(name, config.last_fm.api_key);
-                artistInfo = ArtistInfoSchema.parse({
-                    id,
-                    biography: ArtistInfo?.artist?.bio?.summary || '',
-                    musicBrainzId: ArtistInfo.artist?.mbid,
-                    lastFmUrl: ArtistInfo.artist?.url,
-                    smallImageUrl: ArtistInfo.artist?.image.find((i: Record<string, string>) => i.size === 'small')?.['#text'],
-                    mediumImageUrl: ArtistInfo.artist?.image.find((i: Record<string, string>) => i.size === 'medium')?.['#text'],
-                    largeImageUrl: ArtistInfo.artist?.image.find((i: Record<string, string>) => i.size === 'large')?.['#text'],
-                });
-
-                // if ((artistInfo.largeImageUrl || artistInfo.mediumImageUrl || artistInfo.smallImageUrl)) {
-                //     // TODO: Get artist cover from spotify.
-                //     await handleCoverArt(
-                //         database,
-                //         id,
-                //         undefined,
-                //         undefined,
-                //         artistInfo.largeImageUrl || artistInfo.mediumImageUrl || artistInfo.smallImageUrl,
-                //     );
-                // }
-            }
-
-            const Artist = ArtistID3Schema.parse({
+            const artist = ArtistID3Schema.parse({
                 id,
                 name,
-                musicBrainzId: artistInfo ? artistInfo.musicBrainzId : undefined,
-                artistImageUrl: artistInfo ? (artistInfo.largeImageUrl || artistInfo.mediumImageUrl || artistInfo.smallImageUrl) : undefined,
-                coverArt: artistInfo ? id : undefined,
             });
 
-            await database.set(['artists', id], {
-                artistInfo: artistInfo || {},
-                artist: Artist,
-            });
+            await database.set(['artists', id], { artist });
         }
 
         sorted.push({ id, name });
@@ -452,13 +396,90 @@ async function handleArtist(database: Deno.Kv, artist: string) {
     return sorted;
 }
 
+async function handleLastFMMetadata() {
+    if (config.last_fm && config.last_fm.enabled && config.last_fm.api_key) {
+        for await (const albumEntry of database.list({ prefix: ['albums'] })) {
+            const album = albumEntry.value as Album;
+            if (album.backend.lastFM || album.albumInfo) continue;
+
+            if (config.last_fm && config.last_fm.enabled && config.last_fm.api_key) {
+                const info = await getAlbumInfo(album.subsonic.name, album.subsonic.artists[0].name, config.last_fm.api_key);
+
+                if (info) {
+                    album.albumInfo = AlbumInfoSchema.parse({
+                        notes: info.album?.wiki?.summary || '',
+                        musicBrainzId: info.album?.mbid,
+                        lastFmUrl: info.album?.url,
+                        smallImageUrl: info.album?.image.find((i: Record<string, string>) => i.size === 'small')?.['#text'],
+                        mediumImageUrl: info.album?.image.find((i: Record<string, string>) => i.size === 'medium')?.['#text'],
+                        largeImageUrl: info.album?.image.find((i: Record<string, string>) => i.size === 'large')?.['#text'],
+                    });
+
+                    album.backend.lastFM = true;
+
+                    if ((album.albumInfo.largeImageUrl || album.albumInfo.mediumImageUrl || album.albumInfo.smallImageUrl)) {
+                        await handleCoverArt(
+                            database,
+                            album.subsonic.id,
+                            undefined,
+                            undefined,
+                            album.albumInfo.largeImageUrl || album.albumInfo.mediumImageUrl || album.albumInfo.smallImageUrl,
+                        );
+                    }
+
+                    logger.debug(`📝 Updating LastFM metadata for album: ${album.subsonic.name}`);
+                    await database.set(['albums', album.subsonic.id], album);
+                }
+            }
+        }
+
+        for await (const artistEntry of database.list({ prefix: ['artists'] })) {
+            const artist = artistEntry.value as Artist;
+            if (artist.lastFM || artist.artistInfo) continue;
+
+            const ArtistInfo = await getArtistInfo(artist.artist?.name, config.last_fm.api_key);
+            if (ArtistInfo) {
+                artist.artistInfo = ArtistInfoSchema.parse({
+                    id: artist.artist.id,
+                    biography: ArtistInfo.artist?.bio?.summary || '',
+                    musicBrainzId: ArtistInfo.artist?.mbid,
+                    lastFmUrl: ArtistInfo.artist?.url,
+                    smallImageUrl: ArtistInfo.artist?.image.find((i: Record<string, string>) => i.size === 'small')?.['#text'],
+                    mediumImageUrl: ArtistInfo.artist?.image.find((i: Record<string, string>) => i.size === 'medium')?.['#text'],
+                    largeImageUrl: ArtistInfo.artist?.image.find((i: Record<string, string>) => i.size === 'large')?.['#text'],
+                });
+
+                if ((artist.artistInfo.largeImageUrl || artist.artistInfo.mediumImageUrl || artist.artistInfo.smallImageUrl)) {
+                    // TODO: Get artist cover from spotify.
+                    await handleCoverArt(
+                        database,
+                        artist.artist.id,
+                        undefined,
+                        undefined,
+                        artist.artistInfo.largeImageUrl || artist.artistInfo.mediumImageUrl || artist.artistInfo.smallImageUrl,
+                    );
+                }
+
+                artist.lastFM = true;
+                artist.artist.musicBrainzId = artist.artistInfo.musicBrainzId;
+                artist.artist.artistImageUrl = artist.artistInfo.largeImageUrl || artist.artistInfo.mediumImageUrl || artist.artistInfo.smallImageUrl;
+                artist.artist.coverArt = artist.artist.id;
+
+                logger.debug(`📝 Updating LastFM metadata for artist: ${artist.artist.name}`);
+                await database.set(['artists', artist.artist.id], artist);
+            }
+        }
+    }
+}
+
 async function extractMetadata(filePath: string, trackId: string, database: Deno.Kv) {
     try {
         const existing = await database.get(['tracks', trackId]);
         const lastModified = (await Deno.stat(filePath)).mtime?.getTime() ?? Date.now();
 
         // If the file hasn't changed, skip processing
-        if (existing.value && (existing.value as Song).backend.lastModified === lastModified) return null; // Skip unnecessary parsing
+        if (existing.value && (existing.value as Song).backend.lastModified === lastModified) return null;
+        // Skip unnecessary parsing
         logger.info(`🔍 Extracting metadata for ${filePath}`);
 
         const metadata = await parseFile(filePath);

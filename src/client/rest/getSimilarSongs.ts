@@ -39,7 +39,7 @@ async function handlegetSimilarSongs(c: Context) {
     );
 
     return createResponse(c, {
-        [c.req.path === '/rest/getSimilarSongs' ? 'similarSongs' : 'similarSongs2']: {
+        [/(getSimilarSongs2|getSimilarSongs2\.view)$/.test(c.req.path) ? 'similarSongs2' : 'similarSongs']: {
             // I really don't know why I bothered to sort by score when I was just going to shuffle it anyway, but whatever.
             song: shuffleArray(scoredSongs.filter((item) => item.score > 0).sort((a, b) => b.score - a.score))
                 .slice(0, count)

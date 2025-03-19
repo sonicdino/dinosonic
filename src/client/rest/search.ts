@@ -22,6 +22,7 @@ async function handlesearch(c: Context) {
     const album = [];
     const song = [];
 
+    // TODO: Optimize search for less ram usage. Maybe impossible because of how Deno.openKv works. It is still an unstable feature after all.
     if (artistCount) {
         const maxOffset = (await database.get(['counters', 'A'])).value as number;
         artistOffset = Math.min(artistOffset, maxOffset);

@@ -76,7 +76,7 @@ async function handlegetStarred(c: Context) {
     }
 
     return createResponse(c, {
-        [c.req.path === '/rest/getStarred' ? 'starred' : 'starred2']: {
+        [/(getStarred2|getStarred2\.view)$/.test(c.req.path) ? 'starred2' : 'starred']: {
             artist,
             album,
             song,
