@@ -24,7 +24,7 @@ async function handleScrobble(c: Context) {
     const nowPlayingEntry = (await database.get(['nowPlaying', isValidated.username, 'client', client, 'track', track.subsonic.id])).value as
         | nowPlaying
         | undefined;
-    if (!nowPlayingEntry || nowPlayingEntry.playerName !== client) {
+    if (!nowPlayingEntry && !submission) {
         await database.set(['nowPlaying', isValidated.username, 'client', client, 'track', track.subsonic.id], {
             track: track.subsonic,
             minutesAgo: time,

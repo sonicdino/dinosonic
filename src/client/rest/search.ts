@@ -23,6 +23,7 @@ async function handlesearch(c: Context) {
     const song = [];
 
     // TODO: Optimize search for less ram usage. Maybe impossible because of how Deno.openKv works. It is still an unstable feature after all.
+    // Searching will make the ram usage SKYROCKET for a few minutes depending on how many tracks you have. For me, about 13 THOUSAND tracks bump ram usage to 1.5GiBs.
     if (artistCount) {
         const maxOffset = (await database.get(['counters', 'A'])).value as number;
         artistOffset = Math.min(artistOffset, maxOffset);

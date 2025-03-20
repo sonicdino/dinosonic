@@ -43,7 +43,7 @@ let scanStatus: ScanStatus = {
     lastScan: new Date(),
 };
 
-export async function scanMediaDirectories(database: Deno.Kv, directories: string[]) {
+export async function scanMediaDirectories(database: Deno.Kv, directories: string[], forceUpdate: boolean = false, cleanup: boolean = true) {
     if (scanStatus.scanning) {
         logger.warn('Scan already in progress.');
         return scanStatus;
@@ -53,11 +53,13 @@ export async function scanMediaDirectories(database: Deno.Kv, directories: strin
 
     for (const dir of directories) {
         logger.info(`🔍 Scanning directory: ${dir}`);
-        await scanDirectory(database, dir);
+        await scanDirectory(database, dir, forceUpdate);
     }
 
-    await cleanupTracks();
-    await cleanupAlbumAndArtist();
+    if (cleanup) {
+        await cleanupTracks();
+        await cleanupAlbumAndArtist();
+    }
     await handleLastFMMetadata();
     seenFiles.clear();
     scanStatus.scanning = false;
@@ -173,7 +175,7 @@ async function cleanupAlbumAndArtist() {
     seenTrackIds.clear();
 }
 
-async function scanDirectory(database: Deno.Kv, dir: string) {
+async function scanDirectory(database: Deno.Kv, dir: string, forceUpdate: boolean) {
     for await (const _entry of walk(dir, { exts: ['.flac', '.mp3', '.wav', '.ogg'] })) {
         scanStatus.totalFiles++;
     }
@@ -181,19 +183,19 @@ async function scanDirectory(database: Deno.Kv, dir: string) {
     for await (const entry of walk(dir, { exts: ['.flac', '.mp3', '.wav', '.ogg'] })) {
         const filePath = entry.path;
         seenFiles.add(filePath);
-        await processMediaFile(database, entry.path);
+        await processMediaFile(database, entry.path, forceUpdate);
         scanStatus.count++;
     }
 }
 
-async function processMediaFile(database: Deno.Kv, filePath: string) {
+async function processMediaFile(database: Deno.Kv, filePath: string, forceUpdate: boolean) {
     let trackId = (await database.get(['filePathToId', filePath])).value as string | null;
     if (!trackId) {
         trackId = await getNextId(database, 't');
         await database.set(['filePathToId', filePath], trackId);
     }
 
-    const metadata = await extractMetadata(filePath, trackId, database);
+    const metadata = await extractMetadata(filePath, trackId, database, forceUpdate);
     if (!metadata) return;
 
     logger.info(`📀 Updating metadata for ${filePath}`);
@@ -210,14 +212,25 @@ export async function getArtistIDByName(database: Deno.Kv, name: string): Promis
     }
 }
 
-async function getAlbumIDByName(database: Deno.Kv, name: string): Promise<string | undefined> {
-    for await (const entry of database.list({ prefix: ['albums'] })) {
-        const parsedEntry = AlbumSchema.safeParse(entry.value);
-        if (parsedEntry.success) {
-            const album = parsedEntry.data;
-            if (album.subsonic.name === name) return album.subsonic.id;
+async function getAlbumIDByName(database: Deno.Kv, name: string, artists?: AlbumID3Artists[]): Promise<string | undefined> {
+    const albums = database.list({ prefix: ['albums'] });
+
+    for await (const { value } of albums) {
+        const parsedEntry = AlbumSchema.safeParse(value);
+        if (!parsedEntry.success) continue;
+
+        const { subsonic } = parsedEntry.data;
+        if (subsonic.name.toLowerCase().trim() !== name.toLowerCase().trim()) continue;
+
+        if (
+            !artists?.length ||
+            subsonic.artists.some((artist) => artists.some((a) => a.name.toLowerCase().trim() === artist.name.toLowerCase().trim()))
+        ) {
+            return subsonic.id;
         }
     }
+
+    return undefined;
 }
 
 async function handleCoverArt(database: Deno.Kv, id: string, pictures?: IPicture[], trackPath?: string, url?: string) {
@@ -301,7 +314,7 @@ async function handleAlbum(database: Deno.Kv, albumId: string, trackId: string, 
             changes = true;
         }
 
-        if (!exists.subsonic.discTitles.find((disc) => disc.disc === metadata.common.disk.no)) {
+        if (!exists.subsonic.discTitles.find((disc) => disc.disc === (metadata.common.disk.no || 0))) {
             exists.subsonic.discTitles.push({ disc: metadata.common.disk.no || 0, title: `Disc ${metadata.common.disk.no || 0}` });
             changes = true;
         }
@@ -357,7 +370,6 @@ async function handleAlbum(database: Deno.Kv, albumId: string, trackId: string, 
         created: (new Date(metadata.common.date || '1970-1-1')).toISOString(),
         artistId: albumArtists[0].id,
         songCount: 1,
-        // recordLabels: [{ name: 'TODO: Add support for record labels' }],
         musicBrainzId: undefined,
         artists: albumArtists,
         displayArtist: albumArtists.map((artist) => artist.name).join(', '),
@@ -392,8 +404,6 @@ async function handleArtist(database: Deno.Kv, artist: string) {
         const artistExists = (await database.get(['artists', id])).value as Artist | null;
 
         if (!artistExists) {
-            // TODO: Logging
-
             const artist = ArtistID3Schema.parse({
                 id,
                 name,
@@ -504,27 +514,26 @@ async function handleLastFMMetadata() {
     }
 }
 
-async function extractMetadata(filePath: string, trackId: string, database: Deno.Kv) {
+async function extractMetadata(filePath: string, trackId: string, database: Deno.Kv, forceUpdate: boolean) {
     try {
         const existing = await database.get(['tracks', trackId]);
         const lastModified = (await Deno.stat(filePath)).mtime?.getTime() ?? Date.now();
 
         // If the file hasn't changed, skip processing
-        if (existing.value && (existing.value as Song).backend.lastModified === lastModified) return null;
+        if (existing.value && (existing.value as Song).backend.lastModified === lastModified && !forceUpdate) return null;
         // Skip unnecessary parsing
         logger.info(`🔍 Extracting metadata for ${filePath}`);
 
         const metadata = await parseFile(filePath);
 
+        const artists = await handleArtist(database, metadata.common.artist || 'Unknown Artist');
+        const albumArtists = await handleArtist(database, metadata.common.albumartist || 'Unknown Artist');
         const album = metadata.common.album || 'Unknown Album';
-        const albumId = await getAlbumIDByName(database, album) || await getNextId(database, 'a');
+        const albumId = await getAlbumIDByName(database, album, albumArtists) || await getNextId(database, 'a');
+        await handleAlbum(database, albumId, trackId, albumArtists, metadata);
 
         const coverId = albumId;
         await handleCoverArt(database, coverId, metadata.common.picture, filePath);
-
-        const artists = await handleArtist(database, metadata.common.artist || 'Unknown Artist');
-        const albumArtists = await handleArtist(database, metadata.common.albumartist || 'Unknown Artist');
-        await handleAlbum(database, albumId, trackId, albumArtists, metadata);
 
         const genres: Genre[] | undefined = (typeof metadata.common.genre === 'string')
             ? (metadata.common.genre as string).split(separatorsToRegex(separators)).map((genre: string) => {
