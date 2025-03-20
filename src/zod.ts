@@ -41,6 +41,7 @@ export const ConfigSchema = z.object({
     spotify: ConfigSpotifyOptionSchema.optional(),
     music_folders: z.array(z.string()).default([]),
     scan_on_start: z.boolean().default(false),
+    scan_interval: z.string().default('1d'),
     default_admin_password: z.string(),
 });
 

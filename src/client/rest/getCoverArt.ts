@@ -50,7 +50,7 @@ async function handlegetCoverArt(c: Context) {
         });
     }
 
-    const process = new Deno.Command('ffmpeg', {
+    const process = new Deno.Command(config.transcoding?.ffmpeg_path || 'ffmpeg', {
         args: ['-i', Cover.path, '-vf', `scale=${size}:${size}`, '-y', cachedCoverPath],
         stdout: 'piped',
         stderr: 'piped',

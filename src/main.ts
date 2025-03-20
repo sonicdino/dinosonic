@@ -1,7 +1,7 @@
 import { Config, ConfigSchema, nowPlaying, SubsonicUserSchema } from './zod.ts';
 import { scanMediaDirectories } from './MediaScanner.ts';
 import { parseArgs } from 'parse-args';
-import { encryptForTokenAuth, logger, SERVER_VERSION, setConstants, setupLogger } from './util.ts';
+import { encryptForTokenAuth, logger, parseTimeToMs, SERVER_VERSION, setConstants, setupLogger } from './util.ts';
 import restRoutes from './client/rest/index.ts';
 // import apiRoutes from "./client/api/index.ts";
 import { Context, Hono, Next } from 'hono';
@@ -58,6 +58,7 @@ if (configFile) {
         data_folder: Deno.env.get('DINO_DATA_FOLDER'),
         music_folders: Deno.env.get('DINO_MUSIC_FOLDERS')?.split(';') || [],
         scan_on_start: Deno.env.get('DINO_SCAN_ON_START') === 'true',
+        scan_interval: Deno.env.get('DINO_SCAN_INTERVAL') || '1d',
         // @ts-expect-error If default admin password is not set via env, error and exit.
         default_admin_password: Deno.env.get('DINO_DEFAULT_ADMIN_PASSWORD'),
     };
@@ -155,6 +156,11 @@ if (config.scan_on_start) {
     logger.info('Starting media scan...');
     scanMediaDirectories(database, config.music_folders);
 }
+
+setInterval(() => {
+    logger.info('Starting media scan..');
+    scanMediaDirectories(database, config.music_folders);
+}, parseTimeToMs(config.scan_interval));
 
 logger.info('🚀 Starting Dinosonic server...');
 const app = new Hono();

@@ -56,32 +56,44 @@ function logFormatter(logRecord: log.LogRecord): string {
     return `${bold(timestamp)} [${levelColor(logRecord.levelName)}] ${logRecord.msg}`;
 }
 
+export async function setupLogger(logLevel: string) {
+    logLevel = logLevel.toUpperCase();
+
+    if (logLevel === 'OFF') {
+        await log.setup({
+            handlers: {},
+            loggers: {
+                default: {
+                    level: 'NOTSET',
+                    handlers: [],
+                },
+            },
+        });
+    } else {
+        await log.setup({
+            handlers: {
+                console: new log.ConsoleHandler(logLevel as log.LevelName, {
+                    formatter: logFormatter,
+                }),
+            },
+            loggers: {
+                default: {
+                    level: logLevel as log.LevelName,
+                    handlers: ['console'],
+                },
+            },
+        });
+    }
+
+    logger = log.getLogger();
+}
+
 export async function getNextId(database: Deno.Kv, type: 't' | 'a' | 'A' | 'p'): Promise<string> {
     const idKey = ['counters', type];
     const lastId = (await database.get(idKey)).value as number || 0;
     const newId = lastId + 1;
     await database.set(idKey, newId);
     return `${type}${newId}`;
-}
-
-export async function setupLogger(logLevel: string) {
-    logLevel = logLevel.toUpperCase();
-
-    await log.setup({
-        handlers: {
-            console: new log.ConsoleHandler(logLevel as log.LevelName, {
-                formatter: logFormatter,
-            }),
-        },
-        loggers: {
-            default: {
-                level: logLevel as log.LevelName,
-                handlers: ['console'],
-            },
-        },
-    });
-
-    logger = log.getLogger();
 }
 
 export function setConstants(Database: Deno.Kv, Config: Config) {
@@ -133,15 +145,30 @@ export async function exists(path: string): Promise<boolean> {
     try {
         await Deno.stat(path);
         return true; // Path exists
-    } catch (error) {
-        if (error instanceof Deno.errors.NotFound) {
-            return false; // Path does not exist
-        } else {
-            throw error; // Other errors (e.g., permission denied)
-        }
+    } catch (_) {
+        return false;
     }
 }
 
+export function parseTimeToMs(timeStr: string): number {
+    const timeUnits: Record<string, number> = {
+        s: 1000, // seconds
+        m: 60 * 1000, // minutes
+        h: 60 * 60 * 1000, // hours
+        d: 24 * 60 * 60 * 1000, // days
+    };
+
+    return timeStr.split(' ').reduce((total, part) => {
+        const match = part.match(/(\d+)([smhd])/);
+        if (match) {
+            const [, num, unit] = match;
+            return total + parseInt(num) * timeUnits[unit];
+        }
+        return total;
+    }, 0);
+}
+
+// TODO: If these functions can be further improved, improve.
 async function getOrCreateEncryptionKey(): Promise<CryptoKey> {
     // Check if we have a stored key in the database
     const keyData = (await database.get(['system', 'encryptionKey'])).value as string | undefined;
@@ -175,8 +202,6 @@ async function getOrCreateEncryptionKey(): Promise<CryptoKey> {
         return newKey;
     }
 }
-
-// TODO: If these functions can be further improved, improve.
 
 // Function to encrypt password for token auth
 export async function encryptForTokenAuth(password: string): Promise<string> {

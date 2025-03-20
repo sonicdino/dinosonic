@@ -24,7 +24,6 @@ import { Genre } from './zod.ts';
 import { getAlbumInfo, getArtistCover, getArtistInfo } from './LastFM.ts';
 
 const seenFiles = new Set<string>();
-const seenTrackIds = new Set<string>();
 
 const PLACEHOLDER_SEPARATORS = [';', '/'];
 const separators = PLACEHOLDER_SEPARATORS;
@@ -56,18 +55,19 @@ export async function scanMediaDirectories(database: Deno.Kv, directories: strin
         await scanDirectory(database, dir, forceUpdate);
     }
 
-    if (cleanup) {
-        await cleanupTracks();
-        await cleanupAlbumAndArtist();
-    }
-    await handleLastFMMetadata();
+    if (cleanup) await cleanupDatabase();
+    await handleLastFMMetadata(forceUpdate);
     seenFiles.clear();
     scanStatus.scanning = false;
     logger.info('✅ Media scan complete.');
 }
 
-// TODO: Possibly optimize cleanup functions
-async function cleanupTracks() {
+async function cleanupDatabase() {
+    const seenTrackIds = new Set<string>();
+    const albumsInUse = new Set<string>();
+    const artistsInUse = new Set<string>();
+
+    // Pass 1: Process tracks
     for await (const entry of database.list({ prefix: ['filePathToId'] })) {
         const filePath = entry.key[1] as string;
         const trackId = entry.value as string;
@@ -84,46 +84,22 @@ async function cleanupTracks() {
         const track = trackEntry.value as Song | undefined;
 
         if (track) {
-            seenTrackIds.add(trackId);
             const filePathEntry = await database.get(['filePathToId', track.subsonic.path]);
             if (!filePathEntry.value) {
                 logger.info(`⚠️ Track missing in filePathToId: ${trackId}`);
                 await database.delete(['tracks', trackId]);
+                continue;
+            }
+
+            seenTrackIds.add(trackId);
+            if (track.subsonic.albumId) albumsInUse.add(track.subsonic.albumId);
+            for (const artist of track.subsonic.artists) {
+                artistsInUse.add(artist.id);
             }
         }
     }
 
-    for await (const userDataEntry of database.list({ prefix: ['userData'] })) {
-        if (userDataEntry.key.length === 4, userDataEntry.key[2] === 'track' && !seenTrackIds.has(userDataEntry.key[3] as string)) {
-            logger.info(`❌ Removing user data for missing track: ${userDataEntry.key[3] as string}`);
-            await database.delete(userDataEntry.key);
-        }
-    }
-
-    for await (const playlistEntry of database.list({ prefix: ['playlists'] })) {
-        const playlist = playlistEntry.value as Playlist;
-        const originalLength = playlist.entry.length;
-        playlist.entry = playlist.entry.filter((trackId) => !seenTrackIds.has(trackId as string));
-
-        if (playlist.entry.length !== originalLength) {
-            logger.info(`📝 Updated playlist "${playlist.name}", removed missing tracks.`);
-            await database.set(['playlists', playlist.id], playlist);
-        }
-    }
-}
-
-async function cleanupAlbumAndArtist() {
-    const albumsInUse = new Set<string>();
-    const artistsInUse = new Set<string>();
-
-    for await (const trackEntry of database.list({ prefix: ['tracks'] })) {
-        const track = trackEntry.value as Song;
-        if (track.subsonic.albumId) albumsInUse.add(track.subsonic.albumId);
-        for (const artist of track.subsonic.artists) {
-            artistsInUse.add(artist.id);
-        }
-    }
-
+    // Pass 2: Process albums and collect additional artist references
     for await (const albumEntry of database.list({ prefix: ['albums'] })) {
         const albumId = albumEntry.key[1] as string;
 
@@ -136,19 +112,16 @@ async function cleanupAlbumAndArtist() {
         const album = albumEntry.value as Album;
         const originalSongCount = album.subsonic.song.length;
 
-        // Remove tracks that are not in seenTrackIds
         album.subsonic.song = album.subsonic.song.filter((trackId) => seenTrackIds.has(trackId as string));
 
-        // Only update the database if changes were made
-        if (album.subsonic.song.length !== originalSongCount) {
-            await database.set(albumEntry.key, album);
-        }
+        if (album.subsonic.song.length !== originalSongCount) await database.set(albumEntry.key, album);
 
         for (const artist of album.subsonic.artists) {
             artistsInUse.add(artist.id);
         }
     }
 
+    // Pass 3: Remove orphaned artists
     for await (const artistEntry of database.list({ prefix: ['artists'] })) {
         const artistId = artistEntry.key[1] as string;
 
@@ -158,21 +131,38 @@ async function cleanupAlbumAndArtist() {
         }
     }
 
+    // Pass 4: Cleanup user data & playlists
     for await (const userDataEntry of database.list({ prefix: ['userData'] })) {
-        if (userDataEntry.key.length === 4, userDataEntry.key[2] === 'artist' && !artistsInUse.has(userDataEntry.key[3] as string)) {
-            logger.info(`❌ Removing user data for missing artist: ${userDataEntry.key[3] as string}`);
-            await database.delete(userDataEntry.key);
-        }
+        const key = userDataEntry.key;
+        if (key.length === 4) {
+            const entityType = key[2];
+            const entityId = key[3] as string;
 
-        if (userDataEntry.key.length === 4, userDataEntry.key[2] === 'album' && !albumsInUse.has(userDataEntry.key[3] as string)) {
-            logger.info(`❌ Removing user data for missing album: ${userDataEntry.key[3] as string}`);
-            await database.delete(userDataEntry.key);
+            if (
+                (entityType === 'track' && !seenTrackIds.has(entityId)) ||
+                (entityType === 'artist' && !artistsInUse.has(entityId)) ||
+                (entityType === 'album' && !albumsInUse.has(entityId))
+            ) {
+                logger.info(`❌ Removing user data for missing ${entityType}: ${entityId}`);
+                await database.delete(userDataEntry.key);
+            }
         }
     }
 
+    for await (const playlistEntry of database.list({ prefix: ['playlists'] })) {
+        const playlist = playlistEntry.value as Playlist;
+        const originalLength = playlist.entry.length;
+        playlist.entry = playlist.entry.filter((trackId) => seenTrackIds.has(trackId as string));
+
+        if (playlist.entry.length !== originalLength) {
+            logger.info(`📝 Updated playlist "${playlist.name}", removed missing tracks.`);
+            await database.set(['playlists', playlist.id], playlist);
+        }
+    }
+
+    seenTrackIds.clear();
     albumsInUse.clear();
     artistsInUse.clear();
-    seenTrackIds.clear();
 }
 
 async function scanDirectory(database: Deno.Kv, dir: string, forceUpdate: boolean) {
@@ -418,16 +408,16 @@ async function handleArtist(database: Deno.Kv, artist: string) {
     return sorted;
 }
 
-async function handleLastFMMetadata() {
+async function handleLastFMMetadata(forceUpdate: boolean = false) {
     if (config.last_fm && config.last_fm.enabled && config.last_fm.api_key) {
         for await (const albumEntry of database.list({ prefix: ['albums'] })) {
             const album = albumEntry.value as Album;
-            if (album.backend.lastFM || album.albumInfo) continue;
+            if ((album.backend.lastFM || album.albumInfo) && !forceUpdate) continue;
 
             if (config.last_fm && config.last_fm.enabled && config.last_fm.api_key) {
                 const info = await getAlbumInfo(album.subsonic.name, album.subsonic.artists[0].name, config.last_fm.api_key);
 
-                if (info) {
+                if (info && info.album) {
                     album.albumInfo = AlbumInfoSchema.parse({
                         notes: info.album?.wiki?.summary || '',
                         musicBrainzId: info.album?.mbid,
@@ -448,64 +438,64 @@ async function handleLastFMMetadata() {
                             album.albumInfo.largeImageUrl || album.albumInfo.mediumImageUrl || album.albumInfo.smallImageUrl,
                         );
                     }
+                } else album.backend.lastFM = true;
 
-                    logger.debug(`📝 Updating LastFM metadata for album: ${album.subsonic.name}`);
-                    await database.set(['albums', album.subsonic.id], album);
-                }
+                logger.debug(`📝 Updating LastFM metadata for album: ${album.subsonic.name}`);
+                await database.set(['albums', album.subsonic.id], album);
             }
         }
 
         for await (const artistEntry of database.list({ prefix: ['artists'] })) {
             const artist = artistEntry.value as Artist;
-            if (artist.lastFM || artist.artistInfo) continue;
+            if ((artist.lastFM || artist.artistInfo) && !forceUpdate) continue;
 
-            const ArtistInfo = await getArtistInfo(artist.artist?.name, config.last_fm.api_key);
-            if (ArtistInfo) {
-                const similarArtist = [];
-                let imageURLs = [];
+            if (config.last_fm && config.last_fm.enabled && config.last_fm.api_key) {
+                const ArtistInfo = await getArtistInfo(artist.artist?.name, config.last_fm.api_key);
+                if (ArtistInfo && ArtistInfo.artist) {
+                    const similarArtist = [];
+                    let imageURLs = [];
 
-                if (ArtistInfo.artist?.similar && ArtistInfo.artist.similar?.artist?.length) {
-                    for (const artist of ArtistInfo.artist.similar.artist) {
-                        const artistId = await getArtistIDByName(database, artist.name);
-                        if (artistId) similarArtist.push(artistId);
+                    if (ArtistInfo.artist.similar && ArtistInfo.artist.similar.artist?.length) {
+                        for (const artist of ArtistInfo.artist.similar.artist) {
+                            const artistId = await getArtistIDByName(database, artist.name);
+                            if (artistId) similarArtist.push(artistId);
+                        }
                     }
-                }
 
-                if (config.spotify?.enabled && config.spotify.client_id && config.spotify.client_secret) {
-                    imageURLs = await getArtistCover(artist.artist.name, database, config.spotify.client_id, config.spotify.client_secret);
-                }
+                    if (config.spotify?.enabled && config.spotify.client_id && config.spotify.client_secret) {
+                        imageURLs = await getArtistCover(artist.artist.name, database, config.spotify.client_id, config.spotify.client_secret);
+                    }
 
-                const getImage = (size: 'small' | 'medium' | 'large') =>
-                    imageURLs?.find((i: Record<string, string>) => i.size === size)?.url ||
-                    ArtistInfo.artist?.image.find((i: Record<string, string>) => i.size === size)?.['#text'];
+                    const getImage = (size: 'small' | 'medium' | 'large') =>
+                        imageURLs?.find((i: Record<string, string>) => i.size === size)?.url ||
+                        ArtistInfo.artist?.image.find((i: Record<string, string>) => i.size === size)?.['#text'];
 
-                const imageData = {
-                    small: getImage('small'),
-                    medium: getImage('medium'),
-                    large: getImage('large'),
-                };
+                    const imageData = {
+                        small: getImage('small'),
+                        medium: getImage('medium'),
+                        large: getImage('large'),
+                    };
 
-                artist.artistInfo = ArtistInfoSchema.parse({
-                    id: artist.artist.id,
-                    biography: ArtistInfo.artist?.bio?.summary || '',
-                    musicBrainzId: ArtistInfo.artist?.mbid,
-                    lastFmUrl: ArtistInfo.artist?.url,
-                    smallImageUrl: imageData.small,
-                    mediumImageUrl: imageData.medium,
-                    largeImageUrl: imageData.large,
-                    similarArtist,
-                });
+                    artist.artistInfo = ArtistInfoSchema.parse({
+                        id: artist.artist.id,
+                        biography: ArtistInfo.artist.bio?.summary || '',
+                        musicBrainzId: ArtistInfo.artist.mbid,
+                        lastFmUrl: ArtistInfo.artist.url,
+                        smallImageUrl: imageData.small,
+                        mediumImageUrl: imageData.medium,
+                        largeImageUrl: imageData.large,
+                        similarArtist,
+                    });
 
-                const coverArtUrl = imageData.large || imageData.medium || imageData.small;
-                if (coverArtUrl) {
-                    await handleCoverArt(database, artist.artist.id, undefined, undefined, coverArtUrl);
-                }
+                    const coverArtUrl = imageData.large || imageData.medium || imageData.small;
+                    if (coverArtUrl) await handleCoverArt(database, artist.artist.id, undefined, undefined, coverArtUrl);
 
-                artist.lastFM = true;
-                artist.artist.musicBrainzId = artist.artistInfo.musicBrainzId;
-                artist.artist.artistImageUrl = artist.artistInfo.largeImageUrl || artist.artistInfo.mediumImageUrl ||
-                    artist.artistInfo.smallImageUrl;
-                artist.artist.coverArt = artist.artist.id;
+                    artist.lastFM = true;
+                    artist.artist.musicBrainzId = artist.artistInfo.musicBrainzId;
+                    artist.artist.artistImageUrl = artist.artistInfo.largeImageUrl || artist.artistInfo.mediumImageUrl ||
+                        artist.artistInfo.smallImageUrl;
+                    artist.artist.coverArt = artist.artist.id;
+                } else artist.lastFM = true;
 
                 logger.debug(`📝 Updating LastFM metadata for artist: ${artist.artist.name}`);
                 await database.set(['artists', artist.artist.id], artist);
