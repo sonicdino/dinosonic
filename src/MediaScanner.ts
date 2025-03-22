@@ -6,7 +6,6 @@ import { config, database, exists, getNextId, logger, separatorsToRegex } from '
 import {
     Album,
     AlbumID3Artists,
-    AlbumID3Schema,
     AlbumInfoSchema,
     AlbumReleaseDateSchema,
     AlbumSchema,
@@ -170,7 +169,7 @@ async function scanDirectory(database: Deno.Kv, dir: string, forceUpdate: boolea
         scanStatus.totalFiles++;
     }
 
-    for await (const entry of walk(dir, { exts: ['.flac', '.mp3', '.wav', '.ogg'] })) {
+    for await (const entry of walk(dir, { exts: ['.flac', '.mp3', '.wav', '.ogg', '.FLAC', '.MP3', '.WAV', '.OGG'] })) {
         const filePath = entry.path;
         seenFiles.add(filePath);
         await processMediaFile(database, entry.path, forceUpdate);
@@ -333,7 +332,7 @@ async function handleAlbum(database: Deno.Kv, albumId: string, trackId: string, 
     }
 
     const [year = '1970', month = '1', day = '1'] = (metadata.common.date || '1970-1-1').split('-');
-    const originalReleaseDate = AlbumReleaseDateSchema.parse({
+    const originalReleaseDateParse = AlbumReleaseDateSchema.safeParse({
         year: parseInt(year),
         month: parseInt(month),
         day: parseInt(day),
@@ -348,41 +347,39 @@ async function handleAlbum(database: Deno.Kv, albumId: string, trackId: string, 
         })
         : undefined;
 
-    const album = AlbumID3Schema.parse({
-        id: albumId,
-        name: metadata.common.album || 'Unknown Album',
-        artist: albumArtists[0].name,
-        year: metadata.common.year || 1970,
-        coverArt: albumId,
-        duration: metadata.format.duration ? Math.round(metadata.format.duration) : 0,
-        genre: genres?.map((genre: Genre) => genre.name).join(', '),
-        genres: genres,
-        created: (new Date(metadata.common.date || '1970-1-1')).toISOString(),
-        artistId: albumArtists[0].id,
-        songCount: 1,
-        musicBrainzId: undefined,
-        artists: albumArtists,
-        displayArtist: albumArtists.map((artist) => artist.name).join(', '),
-        releaseTypes: ['album'],
-        originalReleaseDate,
-        releaseDate: originalReleaseDate,
-        song: [trackId],
-        discTitles: [
-            {
-                disc: metadata.common.disk.no || 0,
-                title: `Disc ${metadata.common.disk.no || 0}`,
-            },
-        ],
-    });
-
-    const Album = AlbumSchema.parse({
+    const Album = AlbumSchema.safeParse({
         backend: {
             dateAdded: Date.now(),
         },
-        subsonic: album,
+        subsonic: {
+            id: albumId,
+            name: metadata.common.album || 'Unknown Album',
+            artist: albumArtists[0].name,
+            year: metadata.common.year || 1970,
+            coverArt: albumId,
+            duration: metadata.format.duration ? Math.round(metadata.format.duration) : 0,
+            genre: genres?.map((genre: Genre) => genre.name).join(', '),
+            genres: genres,
+            created: (new Date(metadata.common.date || '1970-1-1')).toISOString(),
+            artistId: albumArtists[0].id,
+            songCount: 1,
+            musicBrainzId: undefined,
+            artists: albumArtists,
+            displayArtist: albumArtists.map((artist) => artist.name).join(', '),
+            releaseTypes: ['album'],
+            originalReleaseDate: originalReleaseDateParse.success ? originalReleaseDateParse.data : undefined,
+            releaseDate: originalReleaseDateParse.success ? originalReleaseDateParse.data : undefined,
+            song: [trackId],
+            discTitles: [
+                {
+                    disc: metadata.common.disk.no || 0,
+                    title: `Disc ${metadata.common.disk.no || 0}`,
+                },
+            ],
+        },
     });
 
-    return database.set(['albums', albumId], Album);
+    if (Album.success) return database.set(['albums', albumId], Album.data);
 }
 
 async function handleArtist(database: Deno.Kv, artist: string) {
@@ -394,12 +391,12 @@ async function handleArtist(database: Deno.Kv, artist: string) {
         const artistExists = (await database.get(['artists', id])).value as Artist | null;
 
         if (!artistExists) {
-            const artist = ArtistID3Schema.parse({
+            const artist = ArtistID3Schema.safeParse({
                 id,
                 name,
             });
 
-            await database.set(['artists', id], { artist });
+            if (artist.success) await database.set(['artists', id], { artist: artist.data });
         }
 
         sorted.push({ id, name });

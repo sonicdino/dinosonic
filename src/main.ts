@@ -1,4 +1,4 @@
-import { Config, ConfigSchema, nowPlaying, SubsonicUserSchema } from './zod.ts';
+import { Config, ConfigSchema, nowPlaying } from './zod.ts';
 import { scanMediaDirectories } from './MediaScanner.ts';
 import { parseArgs } from 'parse-args';
 import { encryptForTokenAuth, logger, parseTimeToMs, SERVER_VERSION, setConstants, setupLogger } from './util.ts';
@@ -140,7 +140,7 @@ if (!(await database.get(['users', 'admin'])).value) {
             username: 'admin',
             password: await encryptForTokenAuth(config.default_admin_password),
         },
-        subsonic: SubsonicUserSchema.parse({
+        subsonic: {
             username: 'admin',
             adminRole: true,
             scrobblingEnabled: true,
@@ -148,7 +148,7 @@ if (!(await database.get(['users', 'admin'])).value) {
             downloadRole: true,
             playlistRole: true,
             streamRole: true,
-        }),
+        },
     });
 }
 

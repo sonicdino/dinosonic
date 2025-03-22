@@ -15,21 +15,33 @@ export const CoverArtSchema = z.object({
 });
 
 export const ConfigTranscodingOptionSchema = z.object({
-    enabled: z.boolean().optional(),
+    enabled: z.boolean().default(false),
     ffmpeg_path: z.string().default('ffmpeg'),
 });
 
 export const ConfigLastFMOptionSchema = z.object({
-    enabled: z.boolean().optional(),
-    enable_scrobbling: z.boolean().default(true),
+    enabled: z.boolean().default(false),
+    enable_scrobbling: z.boolean().default(false),
     api_key: z.string().optional(),
     api_secret: z.string().optional(),
+}).refine((data) => !data.enabled || (data.enabled && data.api_key), {
+    message: 'API Key is required when LastFM is enabled',
+    path: ['api_key'],
+}).refine((data) => !data.enable_scrobbling || (data.enable_scrobbling && data.api_key && data.api_secret), {
+    message: 'API key and API secret are required when scrobbling is enabled',
+    path: ['api_key', 'api_secret'],
 });
 
 export const ConfigSpotifyOptionSchema = z.object({
     enabled: z.boolean().default(false),
     client_id: z.string().optional(),
     client_secret: z.string().optional(),
+}).refine((data) => !data.enabled || (data.enabled && data.client_id), {
+    message: 'client_id is required when spotify is enabled',
+    path: ['client_id'],
+}).refine((data) => !data.enabled || (data.enabled && data.client_secret), {
+    message: 'client_secret is required when spotify is enabled',
+    path: ['client_secret'],
 });
 
 export const ConfigSchema = z.object({
@@ -42,7 +54,7 @@ export const ConfigSchema = z.object({
     music_folders: z.array(z.string()).default([]),
     scan_on_start: z.boolean().default(false),
     scan_interval: z.string().default('1d'),
-    default_admin_password: z.string(),
+    default_admin_password: z.string().default('adminPassword'),
 });
 
 export const ReplayGainSchema = z.object({

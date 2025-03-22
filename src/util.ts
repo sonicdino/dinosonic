@@ -7,7 +7,7 @@ import * as log from 'log';
 import { blue, bold, gray, red, yellow } from 'colors';
 
 const SERVER_NAME = 'Dinosonic';
-export const SERVER_VERSION = '1.0.0';
+export const SERVER_VERSION = '0.0.11';
 const API_VERSION = '1.16.1';
 export let database: Deno.Kv;
 export let config: Config;
@@ -282,17 +282,6 @@ export async function validateAuth(c: Context): Promise<Response | SubsonicUser>
     // 🔍 Get user from the database
     const user = (await database.get(['users', username.toLowerCase()])).value as User | null;
     if (!user) return createResponse(c, {}, 'failed', { code: 40, message: ERROR_MESSAGES[40] });
-
-    // Temporary hack to turn users who had plaintext as their stored password on db to have encrypted passwords.
-    // This will be removed on a future release. If by then your stored users are still storing plaintext in their db,
-    // Either A: Manually encrypt them yourself using the code here, ir
-    // B: Wipe the database.
-    try {
-        if (user.backend.password) await decryptForTokenAuth(user.backend.password);
-    } catch (_) {
-        user.backend.password = await encryptForTokenAuth(user.backend.password);
-        await database.set(['users', username.toLowerCase()], user);
-    }
 
     // ✅ Token Authentication
     if (token && salt) {
