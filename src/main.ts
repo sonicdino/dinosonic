@@ -185,14 +185,31 @@ app.use('*', async (c: Context, next: Next) => {
 
 app.use('/api/*', authMiddleware);
 app.use('/admin/*', authMiddleware);
-app.use('/public/*', serveStatic({ root: `${Deno.cwd()}/src/client/` }));
+app.use('/public/*', serveStatic({ root: new URL('./client/', import.meta.url).pathname }));
 
 app.route('/rest', restRoutes);
 app.route('/api', apiRoutes);
 
 app.get('/favicon.ico', (c) => c.redirect('/public/favicon.ico'));
-app.get('/admin/login', async (c: Context) => c.html(await Deno.readTextFile(`${Deno.cwd()}/src/client/admin/login.html`)));
-app.get('/admin/', async (c: Context) => c.html(await Deno.readTextFile(`${Deno.cwd()}/src/client/admin/index.html`)));
+app.get('/admin/login', async (c: Context) => {
+    try {
+        const content = await Deno.readTextFile(new URL('./client/admin/login.html', import.meta.url));
+        return c.html(content);
+    } catch (error) {
+        console.error('Error loading login page:', error);
+        return c.text('Error loading page', 500);
+    }
+});
+
+app.get('/admin/', async (c: Context) => {
+    try {
+        const content = await Deno.readTextFile(new URL('./client/admin/index.html', import.meta.url));
+        return c.html(content);
+    } catch (error) {
+        console.error('Error loading admin page:', error);
+        return c.text('Error loading page', 500);
+    }
+});
 
 app.get('/', (c: Context) => c.text('Dinosonic Subsonic Server is running!'));
 
