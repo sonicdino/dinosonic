@@ -9,7 +9,7 @@ inspired by the Subsonic API.
 - **Metadata Extraction** – Uses FFmpeg to retrieve music metadata  
 - **Cover Art Support** – Stores and serves album covers efficiently  
 - **Last.fm & Spotify Integration** – Supports OAuth-based Last.fm scrobbling and Spotify metadata fetching  
-- **Admin Panel** – Web interface for managing scrobbling, transcoding profiles, and stats (TBA)
+- **Admin Panel** – Web interface for managing scrobbling, transcoding profiles (TBA), and stats (TBA)
 - **Docker Support** – Easy deployment with environment variables
 - **Standalone Executable** – Runs as a single executable with no dependencies  
 
