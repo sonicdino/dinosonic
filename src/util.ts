@@ -7,7 +7,7 @@ import * as log from 'log';
 import { blue, bold, gray, red, yellow } from 'colors';
 
 const SERVER_NAME = 'Dinosonic';
-export const SERVER_VERSION = '0.0.11';
+export const SERVER_VERSION = '0.0.15';
 const API_VERSION = '1.16.1';
 export let database: Deno.Kv;
 export let config: Config;
@@ -168,8 +168,43 @@ export function parseTimeToMs(timeStr: string): number {
     }, 0);
 }
 
+export async function getSessionKey(token: string): Promise<string | null> {
+    if (config.last_fm && config.last_fm.api_key && config.last_fm.api_secret) {
+        const sig = new URLSearchParams({
+            api_key: config.last_fm.api_key,
+            method: 'auth.getSession',
+            token,
+        });
+
+        sig.append('api_sig', signParams(sig, config.last_fm.api_secret));
+
+        const res = await fetch(
+            `https://ws.audioscrobbler.com/2.0/?method=auth.getSession&api_key=${config.last_fm.api_key}&format=json&${sig}`,
+        );
+        const data = await res.json();
+        return data.session?.key || null;
+    }
+
+    return null;
+}
+
+export function signParams(params: URLSearchParams, apiSecret: string): string {
+    const sortedKeys = [...params.keys()].sort(); // Sort keys alphabetically
+    let signatureBase = '';
+
+    for (const key of sortedKeys) {
+        if (key !== 'format' && key !== 'api_sig') { // Exclude format & api_sig
+            signatureBase += key + params.get(key);
+        }
+    }
+
+    signatureBase += apiSecret; // Append API secret at the end
+
+    return encodeHex(md5(signatureBase)); // Hash with MD5
+}
+
 // TODO: If these functions can be further improved, improve.
-async function getOrCreateEncryptionKey(): Promise<CryptoKey> {
+export async function getOrCreateEncryptionKey(): Promise<CryptoKey> {
     // Check if we have a stored key in the database
     const keyData = (await database.get(['system', 'encryptionKey'])).value as string | undefined;
 
@@ -224,7 +259,7 @@ export async function encryptForTokenAuth(password: string): Promise<string> {
 }
 
 // Function to decrypt password for token auth
-async function decryptForTokenAuth(encryptedData: string): Promise<string> {
+export async function decryptForTokenAuth(encryptedData: string): Promise<string> {
     const combined = Uint8Array.from(atob(encryptedData), (c) => c.charCodeAt(0));
     const iv = combined.slice(0, 12);
     const ciphertext = combined.slice(12);

@@ -110,7 +110,7 @@ export const SongID3Schema = z.object({
     parent: z.string().optional(),
     isDir: z.boolean().default(false),
     title: z.string(),
-    album: z.string().optional(),
+    album: z.string(),
     artist: z.string(),
     track: z.number().optional(),
     year: z.number().optional(),
@@ -260,7 +260,7 @@ export const SubsonicUserSchema = z.object({
     coverArtRole: z.boolean().default(false),
     commentRole: z.boolean().default(false),
     podcastRole: z.boolean().default(false),
-    streamRole: z.boolean(),
+    streamRole: z.boolean().default(true),
     jukeboxRole: z.boolean().default(false),
     shareRole: z.boolean().default(false),
     avatarLastChanged: z.date().optional(),
@@ -279,6 +279,8 @@ export const PlayQueueSchema = z.object({
 export const BackendUserSchema = z.object({
     username: z.string(),
     password: z.string(),
+    lastFMSessionKey: z.string().optional(),
+    listenbrainzToken: z.string().optional(),
 });
 
 export const UserSchema = z.object({

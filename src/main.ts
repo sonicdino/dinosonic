@@ -3,11 +3,13 @@ import { scanMediaDirectories } from './MediaScanner.ts';
 import { parseArgs } from 'parse-args';
 import { encryptForTokenAuth, logger, parseTimeToMs, SERVER_VERSION, setConstants, setupLogger } from './util.ts';
 import restRoutes from './client/rest/index.ts';
-// import apiRoutes from "./client/api/index.ts";
+import apiRoutes from './client/api/index.ts';
 import { Context, Hono, Next } from 'hono';
 import { cors } from 'hono-cors';
+import { serveStatic } from 'hono-deno';
 import { parse } from 'toml';
 import * as path from 'path';
+import { authMiddleware } from './client/middleware.ts';
 let configFile = Deno.env.get('DINO_CONFIG_FILE');
 let config = null;
 
@@ -181,9 +183,16 @@ app.use('*', async (c: Context, next: Next) => {
     logger.debug(`[${c.req.method} (${c.res.status})] ${c.req.url} - ${duration}ms`);
 });
 
-// app.route("/admin", adminRoutes);
+app.use('/api/*', authMiddleware);
+app.use('/admin/*', authMiddleware);
+app.use('/public/*', serveStatic({ root: `${Deno.cwd()}/src/client/` }));
+
 app.route('/rest', restRoutes);
-// app.route("/api", apiRoutes);
+app.route('/api', apiRoutes);
+
+app.get('/favicon.ico', (c) => c.redirect('/public/favicon.ico'));
+app.get('/admin/login', async (c: Context) => c.html(await Deno.readTextFile(`${Deno.cwd()}/src/client/admin/login.html`)));
+app.get('/admin/', async (c: Context) => c.html(await Deno.readTextFile(`${Deno.cwd()}/src/client/admin/index.html`)));
 
 app.get('/', (c: Context) => c.text('Dinosonic Subsonic Server is running!'));
 

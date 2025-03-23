@@ -169,7 +169,7 @@ async function scanDirectory(database: Deno.Kv, dir: string, forceUpdate: boolea
         scanStatus.totalFiles++;
     }
 
-    for await (const entry of walk(dir, { exts: ['.flac', '.mp3', '.wav', '.ogg', '.FLAC', '.MP3', '.WAV', '.OGG'] })) {
+    for await (const entry of walk(dir, { exts: ['.flac', '.mp3', '.wav', '.ogg', '.m4a', '.FLAC', '.MP3', '.WAV', '.OGG', '.M4A'] })) {
         const filePath = entry.path;
         seenFiles.add(filePath);
         await processMediaFile(database, entry.path, forceUpdate);

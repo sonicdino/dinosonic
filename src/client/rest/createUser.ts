@@ -14,7 +14,7 @@ async function handlecreateUser(c: Context) {
     const email = await getField(c, 'email');
     // const ldapAuthenticated = (await getField(c, 'ldapAuthenticated')) === 'true';
     const adminRole = (await getField(c, 'adminRole')) === 'true';
-    const settingsRole = (await getField(c, 'settingsRole')) === 'true';
+    const settingsRole = (await getField(c, 'settingsRole')) === 'true' ? (await getField(c, 'settingsRole')) === 'true' : true;
     const streamRole = await getField(c, 'streamRole') ? (await getField(c, 'streamRole')) === 'true' : true;
     const jukeboxRole = /* (await getField(c, 'jukeboxRole')) === 'true' // Jukebox is not planned. */ false;
     const downloadRole = (await getField(c, 'downloadRole')) === 'true';
@@ -24,17 +24,17 @@ async function handlecreateUser(c: Context) {
     const commentRole = /* (await getField(c, 'commentRole')) === 'true' // Comments are not planned. */ false;
     const podcastRole = /* (await getField(c, 'podcastRole')) === 'true' // Podcasts are not planned. */ false;
     const shareRole = /* (await getField(c, 'shareRole')) === 'true' // Sharing is not planned in the moment. */ false;
-    const scrobblingEnabled = false;
+    const scrobblingEnabled = await getField(c, 'streamRole') ? (await getField(c, 'streamRole')) === 'true' : true;
     // const videoConversionRole = (await getField(c, 'videoConversionRole')) === 'true'; // Videos are not planned.
 
     if (!username) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'username'" });
     if (!password) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'password'" });
 
-    if (password.startsWith('enc:')) password = atob(password.slice(4));
-    password = await encryptForTokenAuth(password);
-
     const user = (await database.get(['users', username.toLowerCase()])).value as User | undefined;
     if (user) return createResponse(c, {}, 'failed', { code: 40, message: 'That username is already in use' });
+
+    if (password.startsWith('enc:')) password = atob(password.slice(4));
+    password = await encryptForTokenAuth(password);
 
     const User = UserSchema.parse({
         backend: { username: username.toLowerCase(), password },

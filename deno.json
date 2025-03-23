@@ -19,10 +19,13 @@
     },
     "imports": {
         "walk": "https://deno.land/std/fs/walk.ts",
+        "djwt": "https://deno.land/x/djwt/mod.ts",
         "parse-args": "jsr:@std/cli/parse-args",
         "zod": "https://deno.land/x/zod/mod.ts",
         "music-metadata": "npm:music-metadata",
         "hono-cors": "jsr:@hono/hono/cors",
+        "hono-deno": "jsr:@hono/hono/deno",
+        "cookies": "jsr:@std/http/cookie",
         "colors": "jsr:@std/fmt/colors",
         "hex": "jsr:@std/encoding/hex",
         "hono": "jsr:@hono/hono",

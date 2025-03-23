@@ -175,7 +175,7 @@ client_secret = "clintSecret"
 
 ## Contributing  
 
-Feel free to contribute by submitting issues, feature requests, or pull requests at [Dinosonic Repository](https://github.com/sonicdino/dinosonic).  
+Feel free to contribute by submitting issues, feature requests, or pull requests at [Dinosonic Repository](https://git.rapidfuge.com/rapidfuge/dinosonic).  
 
 ---
 
