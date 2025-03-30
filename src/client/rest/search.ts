@@ -26,7 +26,7 @@ async function handlesearch(c: Context) {
         const maxOffset = (await database.get(['counters', 'A'])).value as number;
         artistOffset = Math.min(artistOffset, maxOffset);
         const Artists = await Array.fromAsync(database.list({ prefix: ['artists'] }));
-        const fuse = new Fuse(Artists, { keys: ['value.artist.name'], threshold: 0.3 });
+        const fuse = new Fuse(Artists, { keys: ['value.artist.name'], threshold: 0.3, ignoreLocation: true, useExtendedSearch: true });
         const results = query.length ? fuse.search(query).map((r) => r.item) : Artists;
         const slicedResults = results.slice(artistOffset, artistOffset + artistCount);
 
@@ -49,8 +49,23 @@ async function handlesearch(c: Context) {
         const maxOffset = (await database.get(['counters', 'a'])).value as number;
         albumOffset = Math.min(albumOffset, maxOffset);
         const Albums = await Array.fromAsync(database.list({ prefix: ['albums'] }));
-        const fuse = new Fuse(Albums, { keys: ['value.subsonic.artist', 'value.subsonic.name'], threshold: 0.3 });
-        const results = query.length ? fuse.search(query).map((r) => r.item) : Albums;
+        let results = Albums;
+
+        if (query.length) {
+            const formattedAlbums = Albums.map((album) => ({
+                ...album,
+                searchString: `${(album.value as Album).subsonic.artist} ${(album.value as Album).subsonic.name}`.toLowerCase(),
+            }));
+
+            const fuse = new Fuse(formattedAlbums, {
+                keys: ['searchString'],
+                threshold: 0.3,
+                ignoreLocation: true,
+                useExtendedSearch: true,
+            });
+            results = fuse.search(query).map((r) => r.item);
+        }
+
         const slicedResults = results.slice(albumOffset, albumOffset + albumCount);
 
         for (const result of slicedResults) {
@@ -74,9 +89,24 @@ async function handlesearch(c: Context) {
         const maxOffset = (await database.get(['counters', 't'])).value as number;
         songOffset = Math.min(songOffset, maxOffset);
         const Songs = await Array.fromAsync(database.list({ prefix: ['tracks'] }));
+        let results = Songs;
 
-        const fuse = new Fuse(Songs, { keys: ['value.subsonic.artist', 'value.subsonic.album', 'value.subsonic.title'], threshold: 0.3 });
-        const results = query.length ? fuse.search(query).map((r) => r.item) : Songs;
+        if (query.length) {
+            const formattedSongs = Songs.map((song) => ({
+                ...song,
+                searchString: `${(song.value as Song).subsonic.artist} ${(song.value as Song).subsonic.album} ${(song.value as Song).subsonic.title}`
+                    .toLowerCase(),
+            }));
+
+            const fuse = new Fuse(formattedSongs, {
+                keys: ['searchString'],
+                threshold: 0.3,
+                ignoreLocation: true,
+                useExtendedSearch: true,
+            });
+            results = fuse.search(query).map((r) => r.item);
+        }
+
         const slicedResults = results.slice(songOffset, songOffset + songCount);
 
         for (const result of slicedResults) {

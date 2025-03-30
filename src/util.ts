@@ -7,7 +7,7 @@ import * as log from 'log';
 import { blue, bold, gray, red, yellow } from 'colors';
 
 const SERVER_NAME = 'Dinosonic';
-export const SERVER_VERSION = '0.0.20';
+export const SERVER_VERSION = '0.0.21';
 const API_VERSION = '1.16.1';
 export let database: Deno.Kv;
 export let config: Config;
