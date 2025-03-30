@@ -14,7 +14,7 @@ async function handlegetTopSongs(c: Context) {
     const count = parseInt(await getField(c, 'count') || '50');
 
     if (!artistName) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'artist'" });
-    const artist = (await database.get(['artists', await getArtistIDByName(database, artistName) || ''])).value as Artist | null;
+    const artist = (await database.get(['artists', await getArtistIDByName(artistName) || ''])).value as Artist | null;
     if (!artist) return createResponse(c, {}, 'failed', { code: 70, message: 'Artist not found' });
     const matchedSongs: { track: SongID3; rank: number }[] = [];
 

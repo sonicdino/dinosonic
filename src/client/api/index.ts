@@ -1,8 +1,18 @@
 import { Context, Hono } from 'hono';
-import { config, database, decryptForTokenAuth, encryptForTokenAuth, getSessionKey, SERVER_VERSION } from '../../util.ts';
+import {
+    config,
+    database,
+    decryptForTokenAuth,
+    deleteUserReferences,
+    encryptForTokenAuth,
+    getSessionKey,
+    SERVER_VERSION,
+    updateUsernameReferences,
+} from '../../util.ts';
 import { generateJWT } from '../middleware.ts';
 import { deleteCookie, setCookie } from 'cookies';
 import { SubsonicUser, User, UserSchema } from '../../zod.ts';
+import { hardReset } from '../../MediaScanner.ts';
 const api = new Hono();
 
 // Stats maybe
@@ -20,6 +30,15 @@ api.get('/status', async (c: Context) => {
         lastfm: !!user.backend.lastFMSessionKey,
         listenbrainz: !!user.backend.listenbrainzToken,
     });
+});
+
+api.get('/hardReset', (c: Context) => {
+    const sessionUser = c.get('user') as { user: SubsonicUser; exp: number };
+    if (!sessionUser.user.adminRole) return c.json({ error: 'Unauthorized' }, 403);
+
+    hardReset();
+
+    return c.json({ message: 'Hard reset started.' });
 });
 
 // User management
@@ -81,25 +100,52 @@ api.post('/users', async (c: Context) => {
 });
 
 api.put('/users/:username', async (c: Context) => {
-    const { username } = c.req.param();
+    const { username: oldUsername } = c.req.param();
     const sessionUser = c.get('user') as { user: SubsonicUser; exp: number };
 
-    if (!sessionUser.user.adminRole && sessionUser.user.username !== username) return c.json({ error: 'Unauthorized' }, 403);
-
-    const user = (await database.get(['users', username.toLowerCase()])).value as User | null;
-    if (!user) return c.json({ error: 'User not found' }, 404);
-
-    const updatedData = await c.req.json();
-    if (updatedData.password) user.backend.password = await encryptForTokenAuth(updatedData.password);
-    if (updatedData.username) {
-        user.subsonic.username = updatedData.username;
-        user.backend.username = updatedData.username.toLowerCase();
+    if (!sessionUser.user.adminRole && sessionUser.user.username !== oldUsername) {
+        return c.json({ error: 'Unauthorized' }, 403);
     }
 
-    const updatedUser = UserSchema.safeParse({ backend: user.backend, subsonic: { ...user.subsonic, ...updatedData.permissions } });
+    // Fetch the existing user
+    const existingUser = (await database.get(['users', oldUsername.toLowerCase()])).value as User | null;
+    if (!existingUser) return c.json({ error: 'User not found' }, 404);
 
-    if (!updatedUser.success) return c.json({ error: 'Invalid user settings!', errors: updatedUser.error?.format() });
-    await database.set(['users', username], updatedUser.data);
+    // Parse request body
+    const updatedData = await c.req.json();
+    const newUsername = updatedData.username?.toLowerCase() || oldUsername.toLowerCase();
+
+    // Check if username is changing
+    const usernameChanged = oldUsername.toLowerCase() !== newUsername;
+
+    // Update password if provided
+    try {
+        if (usernameChanged) await updateUsernameReferences(oldUsername, newUsername);
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+        return c.json({ error: errorMessage }, 400);
+    }
+    // Update username fields
+    existingUser.subsonic.username = newUsername;
+    existingUser.backend.username = newUsername;
+
+    // Validate user object
+    const updatedUser = UserSchema.safeParse({
+        backend: existingUser.backend,
+        subsonic: { ...existingUser.subsonic, ...updatedData.permissions },
+    });
+
+    if (!updatedUser.success) {
+        return c.json({ error: 'Invalid user settings!', errors: updatedUser.error?.format() });
+    }
+
+    // If username changed, update all references
+    if (usernameChanged) {
+        await updateUsernameReferences(oldUsername, newUsername);
+    }
+
+    // Save updated user
+    await database.set(['users', newUsername], updatedUser.data);
 
     return c.json({ message: 'User updated' });
 });
@@ -111,9 +157,14 @@ api.delete('/users/:username', async (c: Context) => {
     if (!sessionUser.user.adminRole) return c.json({ error: 'Unauthorized' }, 403);
     if (sessionUser.user.username === username) return c.json({ error: 'You cannot delete yourself' }, 400);
 
-    await database.delete(['users', username.toLowerCase()]);
+    // Fetch the user to check if they exist
+    const existingUser = await database.get(['users', username.toLowerCase()]);
+    if (!existingUser.value) return c.json({ error: 'User not found' }, 404);
 
-    return c.json({ message: 'User deleted' });
+    // Delete everything related to the user
+    await deleteUserReferences(username.toLowerCase());
+
+    return c.json({ message: 'User and all related data deleted' });
 });
 
 api.get('/users/:username', async (c: Context) => {

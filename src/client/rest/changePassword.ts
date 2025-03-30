@@ -24,7 +24,7 @@ async function handlechangePassword(c: Context) {
 
     user.backend.password = password;
 
-    await database.set(['users', username], user);
+    await database.set(['users', username.toLowerCase()], user);
 
     return createResponse(c, {}, 'ok');
 }

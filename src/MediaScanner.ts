@@ -2,7 +2,7 @@
 import { walk } from 'walk';
 import { IAudioMetadata, IPicture, parseFile } from 'music-metadata';
 import * as path from 'path';
-import { config, database, exists, getNextId, logger, separatorsToRegex } from './util.ts';
+import { checkInternetConnection, config, database, exists, getNextId, logger, separatorsToRegex } from './util.ts';
 import {
     Album,
     AlbumID3Artists,
@@ -24,9 +24,6 @@ import { getAlbumInfo, getArtistCover, getArtistInfo } from './LastFM.ts';
 
 const seenFiles = new Set<string>();
 
-const PLACEHOLDER_SEPARATORS = [';', '/'];
-const separators = PLACEHOLDER_SEPARATORS;
-
 interface ScanStatus {
     scanning: boolean;
     count: number;
@@ -41,7 +38,26 @@ let scanStatus: ScanStatus = {
     lastScan: new Date(),
 };
 
-export async function scanMediaDirectories(database: Deno.Kv, directories: string[], forceUpdate: boolean = false, cleanup: boolean = true) {
+export async function hardReset() {
+    logger.warn('Hard resetting all track, album, and artist metadata!');
+
+    await database.delete(['tracks']);
+    await database.delete(['albums']);
+    await database.delete(['artists']);
+    await database.delete(['covers']);
+    await database.delete(['filePathToId']);
+    await database.delete(['counters', 't']);
+    await database.delete(['counters', 'a']);
+    await database.delete(['counters', 'A']);
+
+    await cleanupDatabase();
+
+    logger.info('Hard reset done. starting scan now..');
+
+    await scanMediaDirectories(config.music_folders);
+}
+
+export async function scanMediaDirectories(directories: string[], cleanup: boolean = true, debug_log: boolean = false) {
     if (scanStatus.scanning) {
         logger.warn('Scan already in progress.');
         return scanStatus;
@@ -50,15 +66,15 @@ export async function scanMediaDirectories(database: Deno.Kv, directories: strin
     scanStatus = { scanning: true, count: 0, totalFiles: 0, lastScan: new Date() };
 
     for (const dir of directories) {
-        logger.info(`🔍 Scanning directory: ${dir}`);
-        await scanDirectory(database, dir, forceUpdate);
+        logger[debug_log ? 'debug' : 'info'](`🔍 Scanning directory: ${dir}`);
+        await scanDirectory(dir);
     }
 
     if (cleanup) await cleanupDatabase();
-    await handleLastFMMetadata(forceUpdate);
+    await handleLastFMMetadata();
     seenFiles.clear();
     scanStatus.scanning = false;
-    logger.info('✅ Media scan complete.');
+    logger[debug_log ? 'debug' : 'info']('✅ Media scan complete.');
 }
 
 async function cleanupDatabase() {
@@ -164,7 +180,7 @@ async function cleanupDatabase() {
     artistsInUse.clear();
 }
 
-async function scanDirectory(database: Deno.Kv, dir: string, forceUpdate: boolean) {
+async function scanDirectory(dir: string) {
     for await (const _entry of walk(dir, { exts: ['.flac', '.mp3', '.wav', '.ogg'] })) {
         scanStatus.totalFiles++;
     }
@@ -172,26 +188,26 @@ async function scanDirectory(database: Deno.Kv, dir: string, forceUpdate: boolea
     for await (const entry of walk(dir, { exts: ['.flac', '.mp3', '.wav', '.ogg', '.m4a', '.FLAC', '.MP3', '.WAV', '.OGG', '.M4A'] })) {
         const filePath = entry.path;
         seenFiles.add(filePath);
-        await processMediaFile(database, entry.path, forceUpdate);
+        await processMediaFile(entry.path);
         scanStatus.count++;
     }
 }
 
-async function processMediaFile(database: Deno.Kv, filePath: string, forceUpdate: boolean) {
+async function processMediaFile(filePath: string) {
     let trackId = (await database.get(['filePathToId', filePath])).value as string | null;
     if (!trackId) {
-        trackId = await getNextId(database, 't');
+        trackId = await getNextId('t');
         await database.set(['filePathToId', filePath], trackId);
     }
 
-    const metadata = await extractMetadata(filePath, trackId, database, forceUpdate);
+    const metadata = await extractMetadata(filePath, trackId);
     if (!metadata) return;
 
     logger.info(`📀 Updating metadata for ${filePath}`);
     await database.set(['tracks', trackId], metadata);
 }
 
-export async function getArtistIDByName(database: Deno.Kv, name: string): Promise<string | undefined> {
+export async function getArtistIDByName(name: string): Promise<string | undefined> {
     for await (const entry of database.list({ prefix: ['artists'] })) {
         const parsedEntry = ArtistID3Schema.safeParse((entry.value as Artist | null)?.artist);
         if (parsedEntry.success) {
@@ -201,7 +217,7 @@ export async function getArtistIDByName(database: Deno.Kv, name: string): Promis
     }
 }
 
-async function getAlbumIDByName(database: Deno.Kv, name: string, artists?: AlbumID3Artists[]): Promise<string | undefined> {
+async function getAlbumIDByName(name: string, artists?: AlbumID3Artists[]): Promise<string | undefined> {
     const albums = database.list({ prefix: ['albums'] });
 
     for await (const { value } of albums) {
@@ -222,7 +238,7 @@ async function getAlbumIDByName(database: Deno.Kv, name: string, artists?: Album
     return undefined;
 }
 
-async function handleCoverArt(database: Deno.Kv, id: string, pictures?: IPicture[], trackPath?: string, url?: string) {
+async function handleCoverArt(id: string, pictures?: IPicture[], trackPath?: string, url?: string) {
     const coverExists = (await database.get(['covers', id])).value as CoverArt | null;
     if ((coverExists && await exists(coverExists.path)) || (!pictures?.length && !trackPath && !url)) return;
 
@@ -255,8 +271,8 @@ async function handleCoverArt(database: Deno.Kv, id: string, pictures?: IPicture
                 mimeType: contentType,
                 path: filePath,
             });
-        } catch (error) {
-            console.error('Error downloading image:', error);
+        } catch (_) {
+            logger.error('Error downloading image');
         }
     }
 
@@ -291,7 +307,7 @@ async function handleCoverArt(database: Deno.Kv, id: string, pictures?: IPicture
     }
 }
 
-async function handleAlbum(database: Deno.Kv, albumId: string, trackId: string, albumArtists: AlbumID3Artists[], metadata: IAudioMetadata) {
+async function handleAlbum(albumId: string, trackId: string, albumArtists: AlbumID3Artists[], metadata: IAudioMetadata) {
     const exists = (await database.get(['albums', albumId])).value as Album | null;
     let albumInfo;
     if (exists) {
@@ -338,7 +354,7 @@ async function handleAlbum(database: Deno.Kv, albumId: string, trackId: string, 
         day: parseInt(day),
     });
     const genres: Genre[] | undefined = (typeof metadata.common.genre === 'string')
-        ? (metadata.common.genre as string).split(separatorsToRegex(separators)).map((genre: string) => {
+        ? (metadata.common.genre as string).split(separatorsToRegex(config.genre_separators)).map((genre: string) => {
             return { name: genre || '' };
         })
         : (typeof metadata.common.genre === 'object')
@@ -382,12 +398,12 @@ async function handleAlbum(database: Deno.Kv, albumId: string, trackId: string, 
     if (Album.success) return database.set(['albums', albumId], Album.data);
 }
 
-async function handleArtist(database: Deno.Kv, artist: string) {
-    const unsorted = artist.split(separatorsToRegex(separators));
+async function handleArtist(artist: string) {
+    const unsorted = artist.split(separatorsToRegex(config.artist_separators));
     const sorted = [];
     for (const artist of unsorted) {
         const name = artist.trim();
-        const id = await getArtistIDByName(database, name) || await getNextId(database, 'A');
+        const id = await getArtistIDByName(name) || await getNextId('A');
         const artistExists = (await database.get(['artists', id])).value as Artist | null;
 
         if (!artistExists) {
@@ -405,11 +421,13 @@ async function handleArtist(database: Deno.Kv, artist: string) {
     return sorted;
 }
 
-async function handleLastFMMetadata(forceUpdate: boolean = false) {
-    if (config.last_fm && config.last_fm.enabled && config.last_fm.api_key) {
+async function handleLastFMMetadata() {
+    const connectedToInternet = await checkInternetConnection();
+
+    if (connectedToInternet && config.last_fm && config.last_fm.enabled && config.last_fm.api_key) {
         for await (const albumEntry of database.list({ prefix: ['albums'] })) {
             const album = albumEntry.value as Album;
-            if ((album.backend.lastFM || album.albumInfo) && !forceUpdate) continue;
+            if (album.backend.lastFM || album.albumInfo) continue;
 
             if (config.last_fm && config.last_fm.enabled && config.last_fm.api_key) {
                 const info = await getAlbumInfo(album.subsonic.name, album.subsonic.artists[0].name, config.last_fm.api_key);
@@ -428,7 +446,6 @@ async function handleLastFMMetadata(forceUpdate: boolean = false) {
 
                     if ((album.albumInfo.largeImageUrl || album.albumInfo.mediumImageUrl || album.albumInfo.smallImageUrl)) {
                         await handleCoverArt(
-                            database,
                             album.subsonic.id,
                             undefined,
                             undefined,
@@ -444,7 +461,7 @@ async function handleLastFMMetadata(forceUpdate: boolean = false) {
 
         for await (const artistEntry of database.list({ prefix: ['artists'] })) {
             const artist = artistEntry.value as Artist;
-            if ((artist.lastFM || artist.artistInfo) && !forceUpdate) continue;
+            if (artist.lastFM || artist.artistInfo) continue;
 
             if (config.last_fm && config.last_fm.enabled && config.last_fm.api_key) {
                 const ArtistInfo = await getArtistInfo(artist.artist?.name, config.last_fm.api_key);
@@ -454,8 +471,7 @@ async function handleLastFMMetadata(forceUpdate: boolean = false) {
 
                     if (ArtistInfo.artist.similar && ArtistInfo.artist.similar.artist?.length) {
                         for (const artist of ArtistInfo.artist.similar.artist) {
-                            const artistId = await getArtistIDByName(database, artist.name);
-                            if (artistId) similarArtist.push(artistId);
+                            similarArtist.push(artist.name);
                         }
                     }
 
@@ -485,7 +501,7 @@ async function handleLastFMMetadata(forceUpdate: boolean = false) {
                     });
 
                     const coverArtUrl = imageData.large || imageData.medium || imageData.small;
-                    if (coverArtUrl) await handleCoverArt(database, artist.artist.id, undefined, undefined, coverArtUrl);
+                    if (coverArtUrl) await handleCoverArt(artist.artist.id, undefined, undefined, coverArtUrl);
 
                     artist.lastFM = true;
                     artist.artist.musicBrainzId = artist.artistInfo.musicBrainzId;
@@ -501,29 +517,29 @@ async function handleLastFMMetadata(forceUpdate: boolean = false) {
     }
 }
 
-async function extractMetadata(filePath: string, trackId: string, database: Deno.Kv, forceUpdate: boolean) {
+async function extractMetadata(filePath: string, trackId: string) {
     try {
         const existing = await database.get(['tracks', trackId]);
         const lastModified = (await Deno.stat(filePath)).mtime?.getTime() ?? Date.now();
 
         // If the file hasn't changed, skip processing
-        if (existing.value && (existing.value as Song).backend.lastModified === lastModified && !forceUpdate) return null;
+        if (existing.value && (existing.value as Song).backend.lastModified === lastModified) return null;
         // Skip unnecessary parsing
         logger.info(`🔍 Extracting metadata for ${filePath}`);
 
         const metadata = await parseFile(filePath);
 
-        const artists = await handleArtist(database, metadata.common.artist || 'Unknown Artist');
-        const albumArtists = await handleArtist(database, metadata.common.albumartist || 'Unknown Artist');
+        const artists = await handleArtist(metadata.common.artist || 'Unknown Artist');
+        const albumArtists = await handleArtist(metadata.common.albumartist || 'Unknown Artist');
         const album = metadata.common.album || 'Unknown Album';
-        const albumId = await getAlbumIDByName(database, album, albumArtists) || await getNextId(database, 'a');
-        await handleAlbum(database, albumId, trackId, albumArtists, metadata);
+        const albumId = await getAlbumIDByName(album, albumArtists) || await getNextId('a');
+        await handleAlbum(albumId, trackId, albumArtists, metadata);
 
         const coverId = albumId;
-        await handleCoverArt(database, coverId, metadata.common.picture, filePath);
+        await handleCoverArt(coverId, metadata.common.picture, filePath);
 
         const genres: Genre[] | undefined = (typeof metadata.common.genre === 'string')
-            ? (metadata.common.genre as string).split(separatorsToRegex(separators)).map((genre: string) => {
+            ? (metadata.common.genre as string).split(separatorsToRegex(config.genre_separators)).map((genre: string) => {
                 return { name: genre || '' };
             })
             : (typeof metadata.common.genre === 'object')
@@ -632,6 +648,6 @@ export function GetScanStatus() {
 }
 
 export function StartScan() {
-    scanMediaDirectories(database, config.music_folders);
+    scanMediaDirectories(config.music_folders);
     return scanStatus;
 }

@@ -1,13 +1,13 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, getField, validateAuth } from '../../util.ts';
+import { createResponse, database, deleteUserReferences, getField, validateAuth } from '../../util.ts';
 import { User } from '../../zod.ts';
 
 const deleteUser = new Hono();
 
-async function handledeleteUser(c: Context) {
+async function handleDeleteUser(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
-    if (!isValidated.adminRole) return createResponse(c, {}, 'failed', { code: 50, message: "Only admins can get another users' info." });
+    if (!isValidated.adminRole) return createResponse(c, {}, 'failed', { code: 50, message: 'Only admins can delete users.' });
 
     const username = await getField(c, 'username');
     if (!username) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'username'" });
@@ -18,14 +18,15 @@ async function handledeleteUser(c: Context) {
         return createResponse(c, {}, 'failed', { code: 50, message: 'You cannot delete yourself.' });
     }
 
-    await database.delete(['users', username.toLowerCase()]);
+    // Delete the user and all related data
+    await deleteUserReferences(username.toLowerCase());
 
     return createResponse(c, {}, 'ok');
 }
 
-deleteUser.get('/deleteUser', handledeleteUser);
-deleteUser.post('/deleteUser', handledeleteUser);
-deleteUser.get('/deleteUser.view', handledeleteUser);
-deleteUser.post('/deleteUser.view', handledeleteUser);
+deleteUser.get('/deleteUser', handleDeleteUser);
+deleteUser.post('/deleteUser', handleDeleteUser);
+deleteUser.get('/deleteUser.view', handleDeleteUser);
+deleteUser.post('/deleteUser.view', handleDeleteUser);
 
 export default deleteUser;

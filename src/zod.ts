@@ -54,6 +54,8 @@ export const ConfigSchema = z.object({
     music_folders: z.array(z.string()).default([]),
     scan_on_start: z.boolean().default(false),
     scan_interval: z.string().default('1d'),
+    artist_separators: z.array(z.string()).default([';', '/']),
+    genre_separators: z.array(z.string()).default([';', ',']),
     default_admin_password: z.string().default('adminPassword'),
 });
 
@@ -238,7 +240,7 @@ export const ArtistInfoSchema = z.object({
     smallImageUrl: z.string().optional(),
     mediumImageUrl: z.string().optional(),
     largeImageUrl: z.string().optional(),
-    similarArtist: z.array(z.string().or(ArtistID3Schema)).default([]),
+    similarArtist: z.array(z.string()).default([]),
 });
 
 export const ArtistSchema = z.object({

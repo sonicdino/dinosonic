@@ -23,6 +23,7 @@
         "parse-args": "jsr:@std/cli/parse-args",
         "zod": "https://deno.land/x/zod/mod.ts",
         "music-metadata": "npm:music-metadata",
+        "fuse.js": "https://esm.sh/fuse.js",
         "hono-cors": "jsr:@hono/hono/cors",
         "hono-deno": "jsr:@hono/hono/deno",
         "cookies": "jsr:@std/http/cookie",

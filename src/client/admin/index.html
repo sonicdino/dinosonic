@@ -28,7 +28,7 @@
 
         .footer {
             color: #999;
-            border-top: 1px solid #333;
+            border-top: 1px solid #999;
         }
 
         .social-link {
@@ -81,11 +81,12 @@
         <div class="max-w-4xl mx-auto flex items-center justify-between">
             <div>
                 <h1 class="brand-title text-5xl mb-1">DINOSONIC</h1>
-                <p class="text-blue-300">A fast, lightweight music streaming server built with Deno, inspired by
-                    Subsonic. </p>
+                <p class="text-blue-300">
+                    A fast, lightweight music streaming server built with Deno, inspired by Subsonic.
+                </p>
             </div>
             <div class="text-right">
-                <div class="text-xs text-blue-400 mb-1">CONNECTED</div>
+                <div class="text-xs text-blue-400 mb-1">ADMIN PANEL</div>
                 <div id="server-status" class="text-green-400">Server Online</div>
             </div>
         </div>
@@ -105,8 +106,9 @@
                     class="w-full p-2 mb-2 bg-inherit border border-white">
                 <input id="new-password" type="password" placeholder="Password"
                     class="w-full p-2 mb-2 bg-inherit border border-white">
-                <button id="create-user" class="w-full bg-green-700 p-2 uppercase hover-effect">Create
-                    User</button>
+                <button id="create-user" class="w-full bg-green-700 p-2 uppercase hover-effect">
+                    Create User
+                </button>
             </div>
 
             <!-- Users List -->
@@ -117,16 +119,18 @@
         <div class="w-full max-w-2xl border border-white p-6 dashboard-container">
             <h2 class="text-2xl mb-4">LastFM Scrobbling</h2>
             <p>Status: <span id="lastfm-text" class="text-red-500">Not Linked</span></p>
-            <button id="lastfm-button" class="w-full bg-white text-black p-2 uppercase mt-4 hover-effect">Link
-                LastFM</button>
+            <button id="lastfm-button" class="w-full bg-white text-black p-2 uppercase mt-4 hover-effect">
+                Link LastFM
+            </button>
         </div>
 
         <div class="w-full max-w-2xl border border-white p-6 dashboard-container">
             <h2 class="text-2xl mb-4">ListenBrainz Scrobbling (Coming soon)</h2>
             <p>Status: <span id="listenbrainz-text" class="text-red-500">Not Linked</span></p>
             <button id="listenbrainz-button" class="w-full bg-white text-black p-2 uppercase mt-4 hover-effect"
-                disabled>Link
-                ListenBrainz</button>
+                disabled>
+                Link ListenBrainz
+            </button>
         </div>
 
         <!-- Logout -->
@@ -139,7 +143,7 @@
     <footer class="footer w-full py-4 px-8 mt-12">
         <div class="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-center">
             <div class="mb-4 md:mb-0">
-                <span>&copy; 2025 Dinosonic | <span id="version">Loading...</span></span>
+                <span>&copy; 2025 Dinosonic | <span id="version">Version 0.0.0</span></span>
             </div>
             <div class="flex space-x-6">
                 <a href="https://github.com/sonicdino/dinosonic" class="social-link" target="_blank">GitHub</a>
@@ -173,18 +177,18 @@
     </div>
 
     <script>
-        document.addEventListener("DOMContentLoaded", async function () {
-            const usersContainer = document.getElementById("users-container");
-            const adminControls = document.getElementById("admin-controls");
-            const createUserBtn = document.getElementById("create-user");
+        document.addEventListener('DOMContentLoaded', async function () {
+            const usersContainer = document.getElementById('users-container');
+            const adminControls = document.getElementById('admin-controls');
+            const createUserBtn = document.getElementById('create-user');
 
             // Modal Elements
-            const editUserModal = document.getElementById("edit-user-modal");
-            const editUsernameInput = document.getElementById("edit-username");
-            const editPasswordInput = document.getElementById("edit-password");
-            const editPermissionsContainer = document.getElementById("edit-permissions");
-            const saveUserBtn = document.getElementById("save-user");
-            const closeModalBtn = document.getElementById("close-modal");
+            const editUserModal = document.getElementById('edit-user-modal');
+            const editUsernameInput = document.getElementById('edit-username');
+            const editPasswordInput = document.getElementById('edit-password');
+            const editPermissionsContainer = document.getElementById('edit-permissions');
+            const saveUserBtn = document.getElementById('save-user');
+            const closeModalBtn = document.getElementById('close-modal');
 
             let editingUser = null; // Stores current user being edited
 
@@ -194,30 +198,31 @@
                 const currentUser = data.currentUser;
 
                 if (currentUser.adminRole) {
-                    document.getElementById("user-management").classList.remove("hidden");
-                    document.getElementById("admin-controls").classList.remove("hidden");
+                    document.getElementById('user-management').classList.remove('hidden');
+                    document.getElementById('admin-controls').classList.remove('hidden');
                     fetchUsers();
                 }
             }
 
             async function fetchUsers() {
-                const response = await fetch("/api/users");
+                const response = await fetch('/api/users');
                 const data = await response.json();
                 const currentUser = data.currentUser;
                 const users = data.users;
 
-                usersContainer.innerHTML = "";
+                usersContainer.innerHTML = '';
 
-                users.forEach(user => {
+                users.forEach((user) => {
                     if (!currentUser.adminRole && user.username !== currentUser.username) return;
 
-                    const userElement = document.createElement("li");
-                    userElement.classList.add("border", "p-4", "mb-2");
+                    const userElement = document.createElement('li');
+                    userElement.classList.add('border', 'p-4', 'mb-2');
                     userElement.innerHTML = `
                         <strong>${user.username}</strong>
-                        ${currentUser.adminRole && user.username !== currentUser.username ?
-                            `<button onclick="deleteUser('${user.username}')" class="bg-red-500 p-1 ml-2 hover-effect">Delete</button>`
-                            : ''}
+                        ${currentUser.adminRole && user.username !== currentUser.username
+                            ? `<button onclick="deleteUser('${user.username}')" class="bg-red-500 p-1 ml-2 hover-effect">Delete</button>`
+                            : ''
+                        }
                         <button onclick="openEditModal('${user.username}')" class="bg-blue-500 p-1 ml-2 hover-effect">Edit</button>
                     `;
 
@@ -225,35 +230,35 @@
                 });
 
                 if (currentUser.adminRole) {
-                    adminControls.classList.remove("hidden");
+                    adminControls.classList.remove('hidden');
                 }
             }
 
             async function createUser() {
-                const username = document.getElementById("new-username").value;
-                const password = document.getElementById("new-password").value;
+                const username = document.getElementById('new-username').value;
+                const password = document.getElementById('new-password').value;
 
                 if (!username || !password) {
-                    alert("Username and password are required");
+                    alert('Username and password are required');
                     return;
                 }
 
-                await fetch("/api/users", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ username, password })
+                await fetch('/api/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password }),
                 });
 
                 // Clear inputs
-                document.getElementById("new-username").value = "";
-                document.getElementById("new-password").value = "";
+                document.getElementById('new-username').value = '';
+                document.getElementById('new-password').value = '';
 
                 fetchUsers();
             }
 
             window.deleteUser = async function (username) {
                 if (confirm(`Are you sure you want to delete user ${username}?`)) {
-                    await fetch(`/api/users/${username}`, { method: "DELETE" });
+                    await fetch(`/api/users/${username}`, { method: 'DELETE' });
                     fetchUsers();
                 }
             };
@@ -264,17 +269,22 @@
 
                 // Fill modal inputs
                 editUsernameInput.value = editingUser.username;
-                editPasswordInput.value = ""; // Don't pre-fill passwords
+                editPasswordInput.value = ''; // Don't pre-fill passwords
 
                 // Generate checkboxes for permissions
-                editPermissionsContainer.innerHTML = "";
+                editPermissionsContainer.innerHTML = '';
                 const permissions = [
-                    "adminRole", "settingsRole", "downloadRole", "playlistRole",
-                    "coverArtRole", "streamRole", "scrobblingEnabled"
+                    'adminRole',
+                    'settingsRole',
+                    'downloadRole',
+                    'playlistRole',
+                    'coverArtRole',
+                    'streamRole',
+                    'scrobblingEnabled',
                 ];
 
-                permissions.forEach(permission => {
-                    const isChecked = editingUser[permission] ? "checked" : "";
+                permissions.forEach((permission) => {
+                    const isChecked = editingUser[permission] ? 'checked' : '';
                     editPermissionsContainer.innerHTML += `
                         <label class="flex items-center">
                             <input type="checkbox" id="perm-${permission}" ${isChecked} class="mr-2"> 
@@ -284,10 +294,10 @@
                 });
 
                 // Show modal
-                editUserModal.classList.remove("hidden");
+                editUserModal.classList.remove('hidden');
             };
 
-            saveUserBtn.addEventListener("click", async () => {
+            saveUserBtn.addEventListener('click', async () => {
                 if (!editingUser) return;
 
                 const updatedUser = {
@@ -299,85 +309,92 @@
                         podcastRole: false,
                         jukeboxRole: false,
                         shareRole: false,
-                    }
+                    },
                 };
 
                 // Permissions that can be modified by the admin
                 const editablePermissions = [
-                    "adminRole", "settingsRole", "downloadRole", "playlistRole",
-                    "coverArtRole", "streamRole", "scrobblingEnabled"
+                    'adminRole',
+                    'settingsRole',
+                    'downloadRole',
+                    'playlistRole',
+                    'coverArtRole',
+                    'streamRole',
+                    'scrobblingEnabled',
                 ];
 
                 // Collect editable permissions from the form
-                editablePermissions.forEach(permission => {
+                editablePermissions.forEach((permission) => {
                     updatedUser.permissions[permission] = document.getElementById(`perm-${permission}`).checked;
                 });
 
                 await fetch(`/api/users/${editingUser.username}`, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(updatedUser)
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updatedUser),
                 });
 
-                editUserModal.classList.add("hidden");
+                editUserModal.classList.add('hidden');
                 fetchUsers();
             });
 
-            closeModalBtn.addEventListener("click", () => {
-                editUserModal.classList.add("hidden");
+            closeModalBtn.addEventListener('click', () => {
+                editUserModal.classList.add('hidden');
             });
 
-            createUserBtn.addEventListener("click", createUser);
+            createUserBtn.addEventListener('click', createUser);
 
             async function checkStatus() {
                 const response = await fetch('/api/status', { credentials: 'include' });
                 const data = await response.json();
 
-                const lastfmText = document.getElementById("lastfm-text");
-                const listenbrainzText = document.getElementById("listenbrainz-text");
-                const lastfmButton = document.getElementById("lastfm-button");
-                const listenbrainzButton = document.getElementById("listenbrainz-button");
+                const lastfmText = document.getElementById('lastfm-text');
+                const listenbrainzText = document.getElementById('listenbrainz-text');
+                const lastfmButton = document.getElementById('lastfm-button');
+                const listenbrainzButton = document.getElementById('listenbrainz-button');
 
                 lastfmText.textContent = data.lastfm ? 'Linked' : 'Not Linked';
-                lastfmText.classList.toggle("text-green-500", data.lastfm);
-                lastfmText.classList.toggle("text-red-500", !data.lastfm);
+                lastfmText.classList.toggle('text-green-500', data.lastfm);
+                lastfmText.classList.toggle('text-red-500', !data.lastfm);
 
                 listenbrainzText.textContent = data.listenbrainz ? 'Linked' : 'Not Linked';
-                listenbrainzText.classList.toggle("text-green-500", data.listenbrainz);
-                listenbrainzText.classList.toggle("text-red-500", !data.listenbrainz);
-                console.log(data)
-                if (data.lastFMScrobblingEnabled) {
-                    lastfmButton.textContent = data.lastfm ? "Unlink LastFM" : "Link LastFM";
-                    lastfmButton.onclick = () => window.location.href = data.lastfm ? "/api/unlink/lastfm" : "/api/link/lastfm";
+                listenbrainzText.classList.toggle('text-green-500', data.listenbrainz);
+                listenbrainzText.classList.toggle('text-red-500', !data.listenbrainz);
 
-                    listenbrainzButton.textContent = data.listenbrainz ? "Unlink ListenBrainz" : "Link ListenBrainz";
-                    listenbrainzButton.onclick = () => window.location.href = data.listenbrainz ? "/api/unlink/listenbrainz" : "/api/link/listenbrainz";
+                listenbrainzButton.classList.add('opacity-50', 'cursor-not-allowed');
+
+                if (data.lastFMScrobblingEnabled) {
+                    lastfmButton.textContent = data.lastfm ? 'Unlink LastFM' : 'Link LastFM';
+                    lastfmButton.onclick = () => window.location.href = data.lastfm ? '/api/unlink/lastfm' : '/api/link/lastfm';
+
+                    listenbrainzButton.textContent = data.listenbrainz ? 'Unlink ListenBrainz' : 'Link ListenBrainz';
+                    listenbrainzButton.onclick = () =>
+                        window.location.href = data.listenbrainz ? '/api/unlink/listenbrainz' : '/api/link/listenbrainz';
 
                     lastfmButton.disabled = false;
-                    listenbrainzButton.disabled = false;
-                    lastfmButton.classList.remove("opacity-50", "cursor-not-allowed");
-                    listenbrainzButton.classList.remove("opacity-50", "cursor-not-allowed");
+                    // listenbrainzButton.disabled = false;
+                    lastfmButton.classList.remove('opacity-50', 'cursor-not-allowed');
+                    // listenbrainzButton.classList.remove('opacity-50', 'cursor-not-allowed');
                 } else {
                     lastfmButton.disabled = true;
                     listenbrainzButton.disabled = true;
-                    lastfmButton.classList.add("opacity-50", "cursor-not-allowed");
-                    listenbrainzButton.classList.add("opacity-50", "cursor-not-allowed");
+                    lastfmButton.classList.add('opacity-50', 'cursor-not-allowed');
+                    listenbrainzButton.classList.add('opacity-50', 'cursor-not-allowed');
 
-                    lastfmButton.onclick = () => alert("LastFM scrobbling is not enabled.");
-                    listenbrainzButton.onclick = () => alert("ListenBrainz scrobbling is not enabled.");
+                    lastfmButton.onclick = () => alert('LastFM scrobbling is not enabled.');
+                    listenbrainzButton.onclick = () => alert('ListenBrainz scrobbling is not enabled.');
                 }
             }
 
-
-            document.getElementById("logout-button").addEventListener("click", async () => {
+            document.getElementById('logout-button').addEventListener('click', async () => {
                 await fetch('/api/logout', { method: 'POST', credentials: 'include' });
-                window.location.href = "/admin/login";
+                window.location.href = '/admin/login';
             });
 
             // Close modal when clicking outside of it
-            editUserModal.addEventListener("click", function (event) {
+            editUserModal.addEventListener('click', function (event) {
                 if (event.target === editUserModal) {
-                    editUserModal.classList.add("hidden");
+                    editUserModal.classList.add('hidden');
                 }
             });
 

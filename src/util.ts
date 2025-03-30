@@ -2,12 +2,12 @@ import { stringify } from 'xml';
 import { md5 } from 'md5';
 import { encodeHex } from 'hex';
 import { Context } from 'hono';
-import type { Config, SubsonicUser, User } from './zod.ts';
+import type { Config, Playlist, SubsonicUser, User } from './zod.ts';
 import * as log from 'log';
 import { blue, bold, gray, red, yellow } from 'colors';
 
 const SERVER_NAME = 'Dinosonic';
-export const SERVER_VERSION = '0.0.15';
+export const SERVER_VERSION = '0.0.20';
 const API_VERSION = '1.16.1';
 export let database: Deno.Kv;
 export let config: Config;
@@ -88,7 +88,27 @@ export async function setupLogger(logLevel: string) {
     logger = log.getLogger();
 }
 
-export async function getNextId(database: Deno.Kv, type: 't' | 'a' | 'A' | 'p'): Promise<string> {
+export async function checkInternetConnection() {
+    try {
+        // Try to fetch a reliable external resource with a timeout
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+
+        const response = await fetch('https://dns.google.com/resolve?name=example.com', {
+            signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+
+        if (response.ok) return true;
+
+        return false;
+    } catch (_) {
+        return false;
+    }
+}
+
+export async function getNextId(type: 't' | 'a' | 'A' | 'p'): Promise<string> {
     const idKey = ['counters', type];
     const lastId = (await database.get(idKey)).value as number || 0;
     const newId = lastId + 1;
@@ -166,6 +186,78 @@ export function parseTimeToMs(timeStr: string): number {
         }
         return total;
     }, 0);
+}
+
+export async function updateUsernameReferences(oldUsername: string, newUsername: string) {
+    const existingUser = await database.get(['users', newUsername.toLowerCase()]);
+    if (existingUser.value) throw new Error(`Username '${newUsername}' is already taken.`);
+
+    const txn = database.atomic();
+
+    // Move userData entries
+    for await (const entry of database.list({ prefix: ['userData', oldUsername.toLowerCase()] })) {
+        txn.set(['userData', newUsername.toLowerCase(), ...entry.key.slice(2)], entry.value);
+        txn.delete(entry.key);
+    }
+
+    // Move play queue
+    const playQueue = await database.get(['playQueue', oldUsername.toLowerCase()]);
+    if (playQueue.value) {
+        txn.set(['playQueue', newUsername.toLowerCase()], playQueue.value);
+        txn.delete(playQueue.key);
+    }
+
+    // Move now playing entries
+    for await (const entry of database.list({ prefix: ['nowPlaying', oldUsername.toLowerCase()] })) {
+        txn.set(['nowPlaying', newUsername.toLowerCase(), ...entry.key.slice(2)], entry.value);
+        txn.delete(entry.key);
+    }
+
+    // Update playlists where owner is the old username
+    for await (const entry of database.list({ prefix: ['playlists'] })) {
+        const playlist = entry.value as Playlist;
+        if (playlist.owner.toLowerCase() === oldUsername.toLowerCase()) {
+            playlist.owner = newUsername;
+            txn.set(entry.key, playlist);
+        }
+    }
+
+    // Delete the old user entry
+    txn.delete(['users', oldUsername.toLowerCase()]);
+
+    // Commit transaction
+    await txn.commit();
+}
+
+export async function deleteUserReferences(username: string) {
+    const txn = database.atomic();
+
+    // Delete user entry
+    txn.delete(['users', username]);
+
+    // Delete userData entries
+    for await (const entry of database.list({ prefix: ['userData', username] })) {
+        txn.delete(entry.key);
+    }
+
+    // Delete play queue
+    txn.delete(['playQueue', username]);
+
+    // Delete now playing entries
+    for await (const entry of database.list({ prefix: ['nowPlaying', username] })) {
+        txn.delete(entry.key);
+    }
+
+    // Delete playlists owned by the user
+    for await (const entry of database.list({ prefix: ['playlists'] })) {
+        const playlist = entry.value as Playlist;
+        if (playlist.owner === username) {
+            txn.delete(entry.key);
+        }
+    }
+
+    // Commit transaction
+    await txn.commit();
 }
 
 export async function getSessionKey(token: string): Promise<string | null> {

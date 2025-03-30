@@ -61,6 +61,8 @@ if (configFile) {
         music_folders: Deno.env.get('DINO_MUSIC_FOLDERS')?.split(';') || [],
         scan_on_start: Deno.env.get('DINO_SCAN_ON_START') === 'true',
         scan_interval: Deno.env.get('DINO_SCAN_INTERVAL') || '1d',
+        artist_separators: (Deno.env.get('DINO_ARTIST_SEPARATORS') || ';/').split(''),
+        genre_separators: (Deno.env.get('DINO_GENRE_SEPARATORS') || ';,').split(''),
         // @ts-expect-error If default admin password is not set via env, error and exit.
         default_admin_password: Deno.env.get('DINO_DEFAULT_ADMIN_PASSWORD'),
     };
@@ -156,12 +158,12 @@ if (!(await database.get(['users', 'admin'])).value) {
 
 if (config.scan_on_start) {
     logger.info('Starting media scan...');
-    scanMediaDirectories(database, config.music_folders);
+    scanMediaDirectories(config.music_folders);
 }
 
 setInterval(() => {
     logger.info('Starting media scan..');
-    scanMediaDirectories(database, config.music_folders);
+    scanMediaDirectories(config.music_folders, true, true);
 }, parseTimeToMs(config.scan_interval));
 
 logger.info('🚀 Starting Dinosonic server...');

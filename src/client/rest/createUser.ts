@@ -56,7 +56,7 @@ async function handlecreateUser(c: Context) {
         },
     });
 
-    await database.set(['users', username], User);
+    await database.set(['users', username.toLowerCase()], User);
 
     return createResponse(c, {}, 'ok');
 }

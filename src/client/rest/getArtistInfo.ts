@@ -1,6 +1,7 @@
 import { Context, Hono } from 'hono';
 import { createResponse, database, getField, validateAuth } from '../../util.ts';
 import { Album, Artist, ArtistID3, Song, userData } from '../../zod.ts';
+import { getArtistIDByName } from '../../MediaScanner.ts';
 
 const getArtistInfo = new Hono();
 
@@ -20,7 +21,10 @@ async function handlegetArtistInfo(c: Context) {
     if (!artist.artistInfo) return createResponse(c, {}, 'ok');
     const similarArtist: ArtistID3[] = [];
 
-    for (const artistId of artist.artistInfo.similarArtist) {
+    for (const artistName of artist.artistInfo.similarArtist) {
+        const artistId = await getArtistIDByName(artistName);
+        if (!artistId) continue;
+
         const Artist = (await database.get(['artists', artistId as string])).value as Artist | undefined;
         if (!Artist) continue;
 

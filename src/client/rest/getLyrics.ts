@@ -1,10 +1,8 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, getField, logger, separatorsToRegex, validateAuth } from '../../util.ts';
+import { config, createResponse, database, getField, logger, separatorsToRegex, validateAuth } from '../../util.ts';
 import { Song, StructuredLyrics } from '../../zod.ts';
 
 const getLyrics = new Hono();
-const PLACEHOLDER_SEPARATORS = [';', '/'];
-const separators = PLACEHOLDER_SEPARATORS;
 
 async function handlegetLyrics(c: Context) {
     const isValidated = await validateAuth(c);
@@ -69,7 +67,7 @@ function convertToLRC(lyrics: StructuredLyrics[]) {
 }
 
 async function fetchLyrics(trackName: string, artistName: string): Promise<string | null> {
-    const artistNameGet = artistName.split(separatorsToRegex(separators))[0];
+    const artistNameGet = artistName.split(separatorsToRegex(config.artist_separators))[0];
 
     // Search in LRCLIB
     const lrclibGetUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(trackName)}&artist_name=${encodeURIComponent(artistNameGet)}`;

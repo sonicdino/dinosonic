@@ -1,11 +1,8 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, getField, logger, separatorsToRegex, validateAuth } from '../../util.ts';
+import { config, createResponse, database, getField, logger, separatorsToRegex, validateAuth } from '../../util.ts';
 import { Song } from '../../zod.ts';
 
 const getLyricsBySongId = new Hono();
-// TODO: Integrate Separators.
-const PLACEHOLDER_SEPARATORS = [';', '/'];
-const separators = PLACEHOLDER_SEPARATORS;
 
 function timeToMs(timestamp: string): number {
     const match = timestamp.match(/(\d+):(\d+)[.:](\d+)/);
@@ -62,7 +59,7 @@ async function handlegetLyricsBySongId(c: Context) {
 }
 
 async function fetchLyrics(trackName: string, artistName: string): Promise<string | null> {
-    const artistNameGet = artistName.split(separatorsToRegex(separators))[0];
+    const artistNameGet = artistName.split(separatorsToRegex(config.artist_separators))[0];
 
     // Search in LRCLIB
     const lrclibGetUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(trackName)}&artist_name=${encodeURIComponent(artistNameGet)}`;

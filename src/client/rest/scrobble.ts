@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { config, createResponse, database, getField, signParams, validateAuth } from '../../util.ts';
+import { checkInternetConnection, config, createResponse, database, getField, signParams, validateAuth } from '../../util.ts';
 import { nowPlaying, Song, User, userData, userDataSchema } from '../../zod.ts';
 
 const scrobble = new Hono();
@@ -66,8 +66,10 @@ async function handleScrobble(c: Context) {
         await database.set(['userData', isValidated.username, 'album', track.subsonic.albumId], userAlbumData);
     }
 
+    const internetAccess = await checkInternetConnection();
+
     // **LastFM Scrobbling**
-    if (config.last_fm?.enable_scrobbling && config.last_fm.api_key && config.last_fm.api_secret) {
+    if (internetAccess && config.last_fm?.enable_scrobbling && config.last_fm.api_key && config.last_fm.api_secret) {
         const user = (await database.get(['users', isValidated.username.toLowerCase()])).value as User | null;
         if (user?.backend.lastFMSessionKey) {
             const sig = new URLSearchParams({

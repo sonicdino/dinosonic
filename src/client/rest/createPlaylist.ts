@@ -70,7 +70,7 @@ async function handleCreatePlaylist(c: Context) {
     // Create new playlist or update existing one
     if (!isUpdate) {
         // Generate a new ID for the playlist
-        const newPlaylistId = await getNextId(database, 'p');
+        const newPlaylistId = await getNextId('p');
 
         playlist = PlaylistSchema.parse({
             id: newPlaylistId,

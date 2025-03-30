@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import fuzzy from 'fuzzy';
+import Fuse from 'fuse.js';
 import { createResponse, database, getField, validateAuth } from '../../util.ts';
 import { Album, Artist, Song, userData } from '../../zod.ts';
 
@@ -22,33 +22,15 @@ async function handlesearch(c: Context) {
     const album = [];
     const song = [];
 
-    // TODO: Optimize search for less ram usage. Maybe impossible because of how Deno.openKv works. It is still an unstable feature after all.
-    // Searching will make the ram usage SKYROCKET for a few minutes depending on how many tracks you have. For me, about 13 THOUSAND tracks bump ram usage to 1.5GiBs.
     if (artistCount) {
         const maxOffset = (await database.get(['counters', 'A'])).value as number;
         artistOffset = Math.min(artistOffset, maxOffset);
         const Artists = await Array.fromAsync(database.list({ prefix: ['artists'] }));
-        let filteredArtists;
-        const artists = [];
-        let skipped = 0;
+        const fuse = new Fuse(Artists, { keys: ['value.artist.name'], threshold: 0.3 });
+        const results = query.length ? fuse.search(query).map((r) => r.item) : Artists;
+        const slicedResults = results.slice(artistOffset, artistOffset + artistCount);
 
-        if (query.length) {
-            const results = fuzzy.filter(query, Artists, { extract: (artist) => (artist.value as Artist).artist.name });
-            filteredArtists = results.map((result) => result.original);
-        } else {
-            filteredArtists = Artists;
-        }
-
-        for (const entry of filteredArtists) {
-            if (skipped < artistOffset) {
-                skipped++;
-                continue; // Skip items until offset is reached
-            }
-            artists.push(entry);
-            if (artists.length >= artistCount) break; // Stop after collecting `limit` items
-        }
-
-        for (const result of artists) {
+        for (const result of slicedResults) {
             const Artist = result.value as Artist;
 
             const userData = (await database.get(['userData', isValidated.username, 'artist', Artist.artist.id])).value as userData | undefined;
@@ -67,29 +49,11 @@ async function handlesearch(c: Context) {
         const maxOffset = (await database.get(['counters', 'a'])).value as number;
         albumOffset = Math.min(albumOffset, maxOffset);
         const Albums = await Array.fromAsync(database.list({ prefix: ['albums'] }));
-        let filteredAlbums;
-        const albums = [];
-        let skipped = 0;
+        const fuse = new Fuse(Albums, { keys: ['value.subsonic.artist', 'value.subsonic.name'], threshold: 0.3 });
+        const results = query.length ? fuse.search(query).map((r) => r.item) : Albums;
+        const slicedResults = results.slice(albumOffset, albumOffset + albumCount);
 
-        if (query.length) {
-            const results = fuzzy.filter(query, Albums, {
-                extract: (album) => `${(album.value as Album).subsonic.artist} ${(album.value as Album).subsonic.name}`,
-            });
-            filteredAlbums = results.map((result) => result.original);
-        } else {
-            filteredAlbums = Albums;
-        }
-
-        for (const entry of filteredAlbums) {
-            if (skipped < albumOffset) {
-                skipped++;
-                continue; // Skip items until offset is reached
-            }
-            albums.push(entry);
-            if (albums.length >= albumCount) break; // Stop after collecting `limit` items
-        }
-
-        for (const result of albums) {
+        for (const result of slicedResults) {
             const Album = (result.value as Album).subsonic;
 
             const userData = (await database.get(['userData', isValidated.username, 'album', Album.id])).value as userData | undefined;
@@ -110,30 +74,12 @@ async function handlesearch(c: Context) {
         const maxOffset = (await database.get(['counters', 't'])).value as number;
         songOffset = Math.min(songOffset, maxOffset);
         const Songs = await Array.fromAsync(database.list({ prefix: ['tracks'] }));
-        let filteredSongs = [];
-        const songs = [];
-        let skipped = 0;
 
-        if (query.length) {
-            const results = fuzzy.filter(query, Songs, {
-                extract: (song) =>
-                    `${(song.value as Song).subsonic.artist} ${(song.value as Song).subsonic.album} ${(song.value as Song).subsonic.title}`,
-            });
-            filteredSongs = results.map((result) => result.original);
-        } else {
-            filteredSongs = Songs;
-        }
+        const fuse = new Fuse(Songs, { keys: ['value.subsonic.artist', 'value.subsonic.album', 'value.subsonic.title'], threshold: 0.3 });
+        const results = query.length ? fuse.search(query).map((r) => r.item) : Songs;
+        const slicedResults = results.slice(songOffset, songOffset + songCount);
 
-        for (const entry of filteredSongs) {
-            if (skipped < songOffset) {
-                skipped++;
-                continue; // Skip items until offset is reached
-            }
-            songs.push(entry);
-            if (songs.length >= songCount) break; // Stop after collecting `limit` items
-        }
-
-        for (const result of songs) {
+        for (const result of slicedResults) {
             const track = result.value as Song;
             const userData = (await database.get(['userData', isValidated.username, 'track', track.subsonic.id])).value as userData | undefined;
             if (userData) {
@@ -142,7 +88,6 @@ async function handlesearch(c: Context) {
                 if (userData.playCount) track.subsonic.playCount = userData.playCount;
                 if (userData.userRating) track.subsonic.userRating = userData.userRating;
             }
-
             song.push(track.subsonic);
         }
     }
