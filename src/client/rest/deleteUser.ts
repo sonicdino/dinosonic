@@ -1,6 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, deleteUserReferences, getField, validateAuth } from '../../util.ts';
-import { User } from '../../zod.ts';
+import { createResponse, deleteUserReferences, getField, getUserByUsername, validateAuth } from '../../util.ts';
 
 const deleteUser = new Hono();
 
@@ -12,14 +11,14 @@ async function handleDeleteUser(c: Context) {
     const username = await getField(c, 'username');
     if (!username) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'username'" });
 
-    const user = (await database.get(['users', username.toLowerCase()])).value as User | undefined;
+    const user = await getUserByUsername(username);
     if (!user) return createResponse(c, {}, 'failed', { code: 70, message: 'User not found' });
     if (user.subsonic.username.toLowerCase() === isValidated.username.toLowerCase()) {
         return createResponse(c, {}, 'failed', { code: 50, message: 'You cannot delete yourself.' });
     }
 
     // Delete the user and all related data
-    await deleteUserReferences(username.toLowerCase());
+    await deleteUserReferences(user.backend.id);
 
     return createResponse(c, {}, 'ok');
 }

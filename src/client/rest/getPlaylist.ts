@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, getField, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
 import { Playlist, Song, userData } from '../../zod.ts';
 
 const getPlaylist = new Hono();
@@ -16,8 +16,11 @@ async function handleGetPlaylist(c: Context) {
     const playlist = (await database.get(['playlists', playlistId])).value as Playlist | null;
     if (!playlist) return createResponse(c, {}, 'failed', { code: 70, message: 'Playlist not found' });
 
+    const user = await getUserByUsername(isValidated.username);
+    if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
+
     // Check if user has access to the playlist
-    if (!playlist.public && playlist.owner !== isValidated.username && !isValidated.adminRole) {
+    if (!playlist.public && playlist.owner !== user.backend.id && !isValidated.adminRole) {
         return createResponse(c, {}, 'failed', {
             code: 50,
             message: 'You do not have permission to view this playlist',
@@ -30,7 +33,7 @@ async function handleGetPlaylist(c: Context) {
         const song = (await database.get(['tracks', songId as string])).value as Song | undefined;
         if (!song) continue;
 
-        const userData = (await database.get(['userData', isValidated.username, 'track', songId as string])).value as userData | undefined;
+        const userData = (await database.get(['userData', user.backend.id, 'track', songId as string])).value as userData | undefined;
         if (userData) {
             if (userData.starred) song.subsonic.starred = userData.starred.toISOString();
             if (userData.played) song.subsonic.played = userData.played.toISOString();

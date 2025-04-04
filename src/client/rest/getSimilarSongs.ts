@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, getField, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
 import { Song, SongID3, userData } from '../../zod.ts';
 
 const getSimilarSongs = new Hono();
@@ -15,7 +15,10 @@ async function handlegetSimilarSongs(c: Context) {
     const song = (await database.get(['tracks', trackId])).value as Song | undefined;
     if (!song) return createResponse(c, {}, 'failed', { code: 70, message: 'Song not found' });
 
-    const baseUserData = await getUserTrackData(isValidated.username, song.subsonic.id);
+    const user = await getUserByUsername(isValidated.username);
+    if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
+
+    const baseUserData = await getUserTrackData(user.backend.id, song.subsonic.id);
     if (baseUserData) {
         if (baseUserData.starred) song.subsonic.starred = baseUserData.starred.toISOString();
         if (baseUserData.playCount) song.subsonic.playCount = baseUserData.playCount;
@@ -27,7 +30,7 @@ async function handlegetSimilarSongs(c: Context) {
             .filter((entry) => (entry.value as Song).subsonic.id !== song.subsonic.id)
             .map(async (candidate) => {
                 const trackCanditate = (candidate.value as Song).subsonic;
-                const candidateUserData = await getUserTrackData(isValidated.username, trackCanditate.id);
+                const candidateUserData = await getUserTrackData(user.backend.id, trackCanditate.id);
                 if (candidateUserData) {
                     if (candidateUserData.starred) song.subsonic.starred = candidateUserData.starred.toISOString();
                     if (candidateUserData.playCount) song.subsonic.playCount = candidateUserData.playCount;
@@ -48,8 +51,8 @@ async function handlegetSimilarSongs(c: Context) {
     }, 'ok');
 }
 
-async function getUserTrackData(username: string, trackId: string) {
-    return ((await database.get(['userData', username, 'track', trackId])).value as userData) || {};
+async function getUserTrackData(id: string, trackId: string) {
+    return ((await database.get(['userData', id, 'track', trackId])).value as userData) || {};
 }
 
 function shuffleArray<T>(array: T[]): T[] {

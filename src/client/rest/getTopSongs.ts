@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { config, createResponse, database, getField, validateAuth } from '../../util.ts';
+import { checkInternetConnection, config, createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
 import { Artist, Song, SongID3, userData } from '../../zod.ts';
 import { getArtistIDByName } from '../../MediaScanner.ts';
 import { getTopTracks } from '../../LastFM.ts';
@@ -18,7 +18,10 @@ async function handlegetTopSongs(c: Context) {
     if (!artist) return createResponse(c, {}, 'failed', { code: 70, message: 'Artist not found' });
     const matchedSongs: { track: SongID3; rank: number }[] = [];
 
-    if (config.last_fm?.enabled && config.last_fm.api_key) {
+    const user = await getUserByUsername(isValidated.username);
+    if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
+
+    if (await checkInternetConnection() && config.last_fm?.enabled && config.last_fm.api_key) {
         const lastFmTopSongs = await getTopTracks(artist.artist.name, config.last_fm?.api_key, count, artist.artist.musicBrainzId);
 
         for await (const entry of database.list({ prefix: ['tracks'] })) {
@@ -30,7 +33,7 @@ async function handlegetTopSongs(c: Context) {
             );
 
             if (filter) {
-                const userData = (await database.get(['userData', isValidated.username, 'track', track.subsonic.id])).value as userData | undefined;
+                const userData = (await database.get(['userData', user.backend.id, 'track', track.subsonic.id])).value as userData | undefined;
                 if (userData) {
                     if (userData.starred) track.subsonic.starred = userData.starred.toISOString();
                     if (userData.played) track.subsonic.played = userData.played.toISOString();

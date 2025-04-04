@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, validateAuth } from '../../util.ts';
+import { createResponse, database, getUserByUsername, validateAuth } from '../../util.ts';
 import { Album, Artist, Song, userData } from '../../zod.ts';
 
 const getStarred = new Hono();
@@ -11,17 +11,20 @@ async function handlegetStarred(c: Context) {
     const album = [];
     const song = [];
 
-    const starredTracks = (await Array.fromAsync(database.list({ prefix: ['userData', isValidated.username, 'track'] })))
+    const user = await getUserByUsername(isValidated.username);
+    if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
+
+    const starredTracks = (await Array.fromAsync(database.list({ prefix: ['userData', user.backend.id, 'track'] })))
         .map((entry) => entry.value as userData)
         .filter((data) => data.starred)
         .map((data) => data.id);
 
-    const starredAlbums = (await Array.fromAsync(database.list({ prefix: ['userData', isValidated.username, 'album'] })))
+    const starredAlbums = (await Array.fromAsync(database.list({ prefix: ['userData', user.backend.id, 'album'] })))
         .map((entry) => entry.value as userData)
         .filter((data) => data.starred)
         .map((data) => data.id);
 
-    const starredArtists = (await Array.fromAsync(database.list({ prefix: ['userData', isValidated.username, 'artist'] })))
+    const starredArtists = (await Array.fromAsync(database.list({ prefix: ['userData', user.backend.id, 'artist'] })))
         .map((entry) => entry.value as userData)
         .filter((data) => data.starred)
         .map((data) => data.id);
@@ -30,7 +33,7 @@ async function handlegetStarred(c: Context) {
         const track = (await database.get(['tracks', trackId])).value as Song | undefined;
         if (!track) return createResponse(c, {}, 'failed', { code: 70, message: 'Song not found' });
 
-        const userData = (await database.get(['userData', isValidated.username, 'track', trackId])).value as userData | undefined;
+        const userData = (await database.get(['userData', user.backend.id, 'track', trackId])).value as userData | undefined;
         if (userData) {
             if (userData.starred) track.subsonic.starred = userData.starred.toISOString();
             if (userData.played) track.subsonic.played = userData.played.toISOString();
@@ -45,7 +48,7 @@ async function handlegetStarred(c: Context) {
         const Album = (await database.get(['albums', albumId])).value as Album | undefined;
         if (!Album) return createResponse(c, {}, 'failed', { code: 70, message: 'Album not found' });
 
-        const userData = (await database.get(['userData', isValidated.username, 'album', albumId])).value as userData | undefined;
+        const userData = (await database.get(['userData', user.backend.id, 'album', albumId])).value as userData | undefined;
         if (userData) {
             if (userData.starred) Album.subsonic.starred = userData.starred.toISOString();
             if (userData.played) Album.subsonic.played = userData.played.toISOString();
@@ -63,7 +66,7 @@ async function handlegetStarred(c: Context) {
         const Artist = (await database.get(['artists', artistId])).value as Artist | undefined;
         if (!Artist) return createResponse(c, {}, 'failed', { code: 70, message: 'Artist not found' });
 
-        const userData = (await database.get(['userData', isValidated.username, 'artist', artistId])).value as userData | undefined;
+        const userData = (await database.get(['userData', user.backend.id, 'artist', artistId])).value as userData | undefined;
         if (userData) {
             if (userData.starred) Artist.artist.starred = userData.starred.toISOString();
             if (userData.userRating) Artist.artist.userRating = userData.userRating;

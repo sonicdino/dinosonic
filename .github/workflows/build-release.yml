@@ -1,141 +1,141 @@
 name: Build and Release Dinosonic
 
 on:
-    workflow_dispatch:
-        inputs:
-            version:
-                description: 'Version for the release (e.g., 1.2.3)'
-                default: '1.x.x'
-                required: true
-            binary_build:
-                description: 'Build platform binaries'
-                required: true
-                default: 'true'
-                type: choice
-                options:
-                    - true
-                    - false
-            is_latest:
-                description: 'Set the release as latest'
-                required: true
-                default: 'false'
-                type: choice
-                options:
-                    - true
-                    - false
-            is_draft:
-                description: 'Set the release as a draft'
-                required: true
-                type: choice
-                default: 'true'
-                options:
-                    - true
-                    - false
-            build_docker:
-                description: 'Build Docker image'
-                required: true
-                type: choice
-                default: 'true'
-                options:
-                    - true
-                    - false
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version for the release (e.g., 1.2.3)"
+        default: "1.x.x"
+        required: true
+      binary_build:
+        description: "Build platform binaries"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - true
+          - false
+      is_latest:
+        description: "Set the release as latest"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - true
+          - false
+      is_draft:
+        description: "Set the release as a draft"
+        required: true
+        type: choice
+        default: "true"
+        options:
+          - true
+          - false
+      build_docker:
+        description: "Build Docker image"
+        required: true
+        type: choice
+        default: "true"
+        options:
+          - true
+          - false
 
 jobs:
-    build:
-        runs-on: ubuntu-latest
-        if: ${{ github.event.inputs.binary_build == 'true' }}
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v4
+  build:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.binary_build == 'true' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-            - name: Install Deno
-              uses: denoland/setup-deno@v1
-              with:
-                  deno-version: latest
+      - name: Install Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: latest
 
-            - name: Run Build
-              run: |
-                  deno task build:linux
-                  deno task build:linuxarm
-                  deno task build:mac
-                  deno task build:macarm
-                  deno task build:windows
+      - name: Run Build
+        run: |
+          deno task build:linux
+          deno task build:linuxarm
+          deno task build:mac
+          deno task build:macarm
+          deno task build:windows
 
-            - name: Upload Artifacts
-              uses: actions/upload-artifact@v4
-              with:
-                  name: dinosonic-binaries
-                  path: dist/
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dinosonic-binaries
+          path: dist/
 
-    release:
-        needs: build
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout into repo
-              uses: actions/checkout@v3
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout into repo
+        uses: actions/checkout@v3
 
-            - name: Download all binaries
-              uses: actions/download-artifact@v4
-              with:
-                  name: dinosonic-binaries
-                  path: dist/
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: dinosonic-binaries
+          path: dist/
 
-            - name: Upload binaries to GitHub Release
-              uses: ncipollo/release-action@v1
-              with:
-                  allowUpdates: true
-                  artifacts: './dist/dinosonic-linux-x86, ./dist/dinosonic-linux-aarch64, ./dist/dinosonic-mac-x86, ./dist/dinosonic-mac-aarch64, ./dist/dinosonic-win-x86.exe'
-                  token: ${{ secrets.GITHUB_TOKEN }}
-                  tag: ${{ format('v{0}', github.event.inputs.version) }}
-                  commit: ${{ github.sha }}
-                  draft: ${{ github.event.inputs.is_draft }}
-                  artifactErrorsFailBuild: true
-                  name: ${{ format('Dinosonic release v{0}', github.event.inputs.version) }}
-                  makeLatest: ${{ github.event.inputs.is_latest }}
+      - name: Upload binaries to GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifacts: "./dist/dinosonic-linux-x86, ./dist/dinosonic-linux-aarch64, ./dist/dinosonic-mac-x86, ./dist/dinosonic-mac-aarch64, ./dist/dinosonic-win-x86.exe"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ format('v{0}', github.event.inputs.version) }}
+          commit: ${{ github.sha }}
+          draft: ${{ github.event.inputs.is_draft }}
+          artifactErrorsFailBuild: true
+          name: ${{ format('Dinosonic release v{0}', github.event.inputs.version) }}
+          makeLatest: ${{ github.event.inputs.is_latest }}
 
-    docker:
-        name: Build and push Docker image
-        runs-on: ubuntu-latest
-        # needs: build
-        permissions: write-all
-        if: github.event.inputs.build_docker == 'true'
-        steps:
-            - name: Checkout into repo
-              uses: actions/checkout@v3
+  docker:
+    name: Build and push Docker image
+    runs-on: ubuntu-latest
+    # needs: build
+    permissions: write-all
+    if: github.event.inputs.build_docker == 'true'
+    steps:
+      - name: Checkout into repo
+        uses: actions/checkout@v3
 
-            # Buildx and arm builds are disabled for now as the app is not fully released yet.
-            # - name: Set up Docker Buildx
-            #   id: buildx
-            #   uses: docker/setup-buildx-action@v1
+      # Buildx and arm builds are disabled for now as the app is not fully released yet.
+      # - name: Set up Docker Buildx
+      #   id: buildx
+      #   uses: docker/setup-buildx-action@v1
 
-            - name: Login to GHCR
-              uses: docker/login-action@v1
-              with:
-                  registry: ghcr.io
-                  username: ${{ github.repository_owner }}
-                  password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Login to GHCR
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-            - id: lower-repo
-              name: Repository to lowercase
-              run: |
-                  echo "repository=${GITHUB_REPOSITORY@L}" >> $GITHUB_OUTPUT
+      - id: lower-repo
+        name: Repository to lowercase
+        run: |
+          echo "repository=${GITHUB_REPOSITORY@L}" >> $GITHUB_OUTPUT
 
-            - name: Docker meta
-              id: meta # you'll use this in the next step
-              uses: docker/metadata-action@v3
-              with:
-                  # list of Docker images to use as base name for tags
-                  images: |
-                      ghcr.io/${{ steps.lower-repo.outputs.repository }}
-            - name: Build and push
-              uses: docker/build-push-action@v2
-              with:
-                  context: .
-                  # platforms: linux/amd64, linux/arm64
-                  push: true
-                  tags: ghcr.io/${{steps.lower-repo.outputs.repository}}:${{format('v{0}', github.event.inputs.version)}}, ${{env.LATEST_TAG}}
-                  labels: org.opencontainers.image.title=Docker
-                  build-args: |
-                      app_version=${{github.event.inputs.version}}
-              env:
-                  LATEST_TAG: ${{ github.event.inputs.is_latest == 'true' && format('ghcr.io/{0}:latest', steps.lower-repo.outputs.repository) || '' }}
+      - name: Docker meta
+        id: meta # you'll use this in the next step
+        uses: docker/metadata-action@v3
+        with:
+          # list of Docker images to use as base name for tags
+          images: |
+            ghcr.io/${{ steps.lower-repo.outputs.repository }}
+      - name: Build and push
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          # platforms: linux/amd64, linux/arm64
+          push: true
+          tags: ghcr.io/${{steps.lower-repo.outputs.repository}}:${{format('v{0}', github.event.inputs.version)}}, ${{env.LATEST_TAG}}
+          labels: org.opencontainers.image.title=Docker
+          build-args: |
+            app_version=${{github.event.inputs.version}}
+        env:
+          LATEST_TAG: ${{ github.event.inputs.is_latest == 'true' && format('ghcr.io/{0}:latest', steps.lower-repo.outputs.repository) || '' }}

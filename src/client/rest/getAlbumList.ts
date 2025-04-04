@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, getField, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
 import { Album, userData } from '../../zod.ts';
 
 const getAlbumList = new Hono();
@@ -19,6 +19,9 @@ async function handlegetAlbumList(c: Context) {
     if ((type === 'byYear' && !fromYear)) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'fromYear'" });
     if ((type === 'byYear' && !toYear)) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'toYear'" });
     if (type === 'byGenre' && !genre) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'genre'" });
+
+    const user = await getUserByUsername(isValidated.username);
+    if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
 
     let Albums = (await Array.fromAsync(database.list({ prefix: ['albums'] }))).map((Albums) => (Albums.value as Album));
     const album = [];
@@ -41,7 +44,7 @@ async function handlegetAlbumList(c: Context) {
             break;
 
         case 'highest': {
-            const userDatas = (await Array.fromAsync(database.list({ prefix: ['userData', isValidated.username, 'album'] }))).map(
+            const userDatas = (await Array.fromAsync(database.list({ prefix: ['userData', user.backend.id, 'album'] }))).map(
                 (entry) => (entry.value as userData),
             );
             const userRatings = new Map(userDatas.map((entry) => [entry.id, entry.userRating]));
@@ -53,7 +56,7 @@ async function handlegetAlbumList(c: Context) {
         }
 
         case 'recent': {
-            const userDatas = (await Array.fromAsync(database.list({ prefix: ['userData', isValidated.username, 'album'] }))).map(
+            const userDatas = (await Array.fromAsync(database.list({ prefix: ['userData', user.backend.id, 'album'] }))).map(
                 (entry) => (entry.value as userData),
             );
             const userPlayed = new Map(userDatas.map((entry) => [entry.id, entry.played]));
@@ -65,7 +68,7 @@ async function handlegetAlbumList(c: Context) {
         }
 
         case 'frequent': {
-            const userDatas = (await Array.fromAsync(database.list({ prefix: ['userData', isValidated.username, 'album'] }))).map(
+            const userDatas = (await Array.fromAsync(database.list({ prefix: ['userData', user.backend.id, 'album'] }))).map(
                 (entry) => (entry.value as userData),
             );
             const userPlaycount = new Map(userDatas.map((entry) => [entry.id, entry.playCount]));
@@ -94,7 +97,7 @@ async function handlegetAlbumList(c: Context) {
         // @ts-expect-error A weird error with Deno type checking i guess.
         delete Album.subsonic.song;
 
-        const userData = (await database.get(['userData', isValidated.username, 'album', Album.subsonic.id])).value as userData | undefined;
+        const userData = (await database.get(['userData', user.backend.username, 'album', Album.subsonic.id])).value as userData | undefined;
         if (userData) {
             if (userData.starred) Album.subsonic.starred = userData.starred.toISOString();
             if (userData.played) Album.subsonic.played = userData.played.toISOString();

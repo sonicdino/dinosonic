@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, validateAuth } from '../../util.ts';
+import { createResponse, database, getUserByUsername, validateAuth } from '../../util.ts';
 import { Artist, ArtistID3, userData } from '../../zod.ts';
 
 const getArtists = new Hono();
@@ -9,11 +9,14 @@ async function handlegetArtists(c: Context) {
     if (isValidated instanceof Response) return isValidated;
     const artists = [];
 
+    const user = await getUserByUsername(isValidated.username);
+    if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
+
     for await (const entry of database.list({ prefix: ['artists'] })) {
         const artist = entry.value as Artist;
         const artistId = artist.artist.id;
 
-        const userData = (await database.get(['userData', isValidated.username, 'artist', artistId])).value as userData | undefined;
+        const userData = (await database.get(['userData', user.backend.id, 'artist', artistId])).value as userData | undefined;
         if (userData) {
             if (userData.starred) artist.artist.starred = userData.starred.toISOString();
             if (userData.userRating) artist.artist.userRating = userData.userRating;

@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, getField, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
 import { Song, userData } from '../../zod.ts';
 
 const getSong = new Hono();
@@ -14,7 +14,10 @@ async function handlegetSong(c: Context) {
     const song = (await database.get(['tracks', trackId])).value as Song | undefined;
     if (!song) return createResponse(c, {}, 'failed', { code: 70, message: 'Song not found' });
 
-    const userData = (await database.get(['userData', isValidated.username, 'track', trackId])).value as userData | undefined;
+    const user = await getUserByUsername(isValidated.username);
+    if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
+
+    const userData = (await database.get(['userData', user.backend.id, 'track', trackId])).value as userData | undefined;
     if (userData) {
         if (userData.starred) song.subsonic.starred = userData.starred.toISOString();
         if (userData.played) song.subsonic.played = userData.played.toISOString();

@@ -279,6 +279,7 @@ export const PlayQueueSchema = z.object({
 });
 
 export const BackendUserSchema = z.object({
+    id: z.string(),
     username: z.string(),
     password: z.string(),
     lastFMSessionKey: z.string().optional(),

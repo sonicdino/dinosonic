@@ -1,6 +1,6 @@
 import { Context, Hono } from 'hono';
 import Fuse from 'fuse.js';
-import { createResponse, database, getField, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
 import { Album, Artist, Song, userData } from '../../zod.ts';
 
 const search = new Hono();
@@ -18,6 +18,9 @@ async function handlesearch(c: Context) {
     let songOffset = parseInt(await getField(c, 'songOffset') || '0');
     // const musicFolderId = await getField(c, "musicFolderId") || "";
 
+    const user = await getUserByUsername(isValidated.username);
+    if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
+
     const artist = [];
     const album = [];
     const song = [];
@@ -33,7 +36,7 @@ async function handlesearch(c: Context) {
         for (const result of slicedResults) {
             const Artist = result.value as Artist;
 
-            const userData = (await database.get(['userData', isValidated.username, 'artist', Artist.artist.id])).value as userData | undefined;
+            const userData = (await database.get(['userData', user.backend.id, 'artist', Artist.artist.id])).value as userData | undefined;
             if (userData) {
                 if (userData.starred) Artist.artist.starred = userData.starred.toISOString();
                 if (userData.userRating) Artist.artist.userRating = userData.userRating;
@@ -71,7 +74,7 @@ async function handlesearch(c: Context) {
         for (const result of slicedResults) {
             const Album = (result.value as Album).subsonic;
 
-            const userData = (await database.get(['userData', isValidated.username, 'album', Album.id])).value as userData | undefined;
+            const userData = (await database.get(['userData', user.backend.id, 'album', Album.id])).value as userData | undefined;
             if (userData) {
                 if (userData.starred) Album.starred = userData.starred.toISOString();
                 if (userData.played) Album.played = userData.played.toISOString();
@@ -111,7 +114,7 @@ async function handlesearch(c: Context) {
 
         for (const result of slicedResults) {
             const track = result.value as Song;
-            const userData = (await database.get(['userData', isValidated.username, 'track', track.subsonic.id])).value as userData | undefined;
+            const userData = (await database.get(['userData', user.backend.id, 'track', track.subsonic.id])).value as userData | undefined;
             if (userData) {
                 if (userData.starred) track.subsonic.starred = userData.starred.toISOString();
                 if (userData.played) track.subsonic.played = userData.played.toISOString();

@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, getField, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
 import { Album, AlbumID3, Artist, userData } from '../../zod.ts';
 
 const getArtist = new Hono();
@@ -14,7 +14,10 @@ async function handlegetArtist(c: Context) {
     const Artist = (await database.get(['artists', artistId])).value as Artist | undefined;
     if (!Artist) return createResponse(c, {}, 'failed', { code: 70, message: 'Artist not found' });
 
-    const userData = (await database.get(['userData', isValidated.username, 'artist', artistId])).value as userData | undefined;
+    const user = await getUserByUsername(isValidated.username);
+    if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
+
+    const userData = (await database.get(['userData', user.backend.id, 'artist', artistId])).value as userData | undefined;
     if (userData) {
         if (userData.starred) Artist.artist.starred = userData.starred.toISOString();
         if (userData.userRating) Artist.artist.userRating = userData.userRating;
@@ -27,7 +30,7 @@ async function handlegetArtist(c: Context) {
         // @ts-expect-error A weird error with Deno type checking i guess.
         delete album.song;
 
-        const userData = (await database.get(['userData', isValidated.username, 'album', album.id])).value as userData | undefined;
+        const userData = (await database.get(['userData', user.backend.id, 'album', album.id])).value as userData | undefined;
         if (userData) {
             if (userData.starred) album.starred = userData.starred.toISOString();
             if (userData.played) album.played = userData.played.toISOString();

@@ -1,7 +1,7 @@
 import { Config, ConfigSchema, nowPlaying } from './zod.ts';
 import { scanMediaDirectories } from './MediaScanner.ts';
 import { parseArgs } from 'parse-args';
-import { encryptForTokenAuth, logger, parseTimeToMs, SERVER_VERSION, setConstants, setupLogger } from './util.ts';
+import { encryptForTokenAuth, getNextId, logger, parseTimeToMs, SERVER_VERSION, setConstants, setupLogger } from './util.ts';
 import restRoutes from './client/rest/index.ts';
 import apiRoutes from './client/api/index.ts';
 import { Context, Hono, Next } from 'hono';
@@ -136,11 +136,12 @@ async function cleanupNowPlaying() {
 setInterval(cleanupNowPlaying, 60 * 1000);
 cleanupNowPlaying();
 
-if (!(await database.get(['users', 'admin'])).value) {
+if (!(await database.get(['users', 'u1'])).value) {
     logger.info("Admin user doesn't exist in the database. Creating one.");
 
-    await database.set(['users', 'admin'], {
+    await database.set(['users', 'u1'], {
         backend: {
+            id: await getNextId('u'),
             username: 'admin',
             password: await encryptForTokenAuth(config.default_admin_password),
         },

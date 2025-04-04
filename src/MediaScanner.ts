@@ -381,7 +381,9 @@ async function handleAlbum(albumId: string, trackId: string, albumArtists: Album
             songCount: 1,
             musicBrainzId: undefined,
             artists: albumArtists,
-            displayArtist: albumArtists.map((artist) => artist.name).join(', '),
+            displayArtist: albumArtists.length > 1
+                ? albumArtists.slice(0, -1).map((a) => a.name).join(', ') + ' & ' + albumArtists[albumArtists.length - 1].name
+                : albumArtists[0]?.name || '',
             releaseTypes: ['album'],
             originalReleaseDate: originalReleaseDateParse.success ? originalReleaseDateParse.data : undefined,
             releaseDate: originalReleaseDateParse.success ? originalReleaseDateParse.data : undefined,
@@ -630,7 +632,12 @@ async function extractMetadata(filePath: string, trackId: string) {
                 genres: genres,
                 artists,
                 albumArtists,
-                displayAlbumArtist: artists.map((artist) => artist.name).join(', '),
+                displayArtist: artists.length > 1
+                    ? artists.slice(0, -1).map((a) => a.name).join(', ') + ' & ' + artists[artists.length - 1].name
+                    : artists[0]?.name || '',
+                displayAlbumArtist: albumArtists.length > 1
+                    ? albumArtists.slice(0, -1).map((a) => a.name).join(', ') + ' & ' + albumArtists[albumArtists.length - 1].name
+                    : albumArtists[0]?.name || '',
                 replayGain,
             },
         });

@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, getField, getFields, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, getFields, getUserByUsername, validateAuth } from '../../util.ts';
 import { Playlist, Song } from '../../zod.ts';
 
 const updatePlaylist = new Hono();
@@ -37,8 +37,11 @@ async function handleUpdatePlaylist(c: Context) {
         return createResponse(c, {}, 'failed', { code: 70, message: 'Playlist not found' });
     }
 
+    const user = await getUserByUsername(isValidated.username);
+    if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
+
     // Check ownership
-    if (playlist.owner !== isValidated.username && !isValidated.adminRole) {
+    if (playlist.owner !== user.backend.id && !isValidated.adminRole) {
         return createResponse(c, {}, 'failed', {
             code: 50,
             message: 'Only the owner of a playlist is allowed to update it',

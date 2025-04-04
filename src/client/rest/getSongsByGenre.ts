@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, getField, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
 import { Song, userData } from '../../zod.ts';
 
 const getSongsByGenre = new Hono();
@@ -12,6 +12,9 @@ async function handlegetSongsByGenre(c: Context) {
     const offset = parseInt(await getField(c, 'offset') || '0');
     const genre = await getField(c, 'genre');
 
+    const user = await getUserByUsername(isValidated.username);
+    if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
+
     if (count > 500) count = 500;
     let songs = (await Array.fromAsync(database.list({ prefix: ['tracks'] })))
         .map((Albums) => (Albums.value as Song))
@@ -21,7 +24,7 @@ async function handlegetSongsByGenre(c: Context) {
     songs = songs.slice(offset, offset + count || 0);
 
     for (const track of songs) {
-        const userData = (await database.get(['userData', isValidated.username, 'track', track.subsonic.id])).value as userData | undefined;
+        const userData = (await database.get(['userData', user.backend.id, 'track', track.subsonic.id])).value as userData | undefined;
         if (userData) {
             if (userData.starred) track.subsonic.starred = userData.starred.toISOString();
             if (userData.played) track.subsonic.played = userData.played.toISOString();

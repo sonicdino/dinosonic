@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, getField, getFields, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, getFields, getUserByUsername, validateAuth } from '../../util.ts';
 import { PlayQueueSchema, Song } from '../../zod.ts';
 
 const savePlayQueue = new Hono();
@@ -14,8 +14,11 @@ async function handlesavePlayQueue(c: Context) {
     let position = parseInt(await getField(c, 'position') || '0');
     if (isNaN(position)) position = 0;
 
+    const user = await getUserByUsername(isValidated.username);
+    if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
+
     if (!ids && !ids?.length) {
-        await database.delete(['playQueue', isValidated.username.toLowerCase()]);
+        await database.delete(['playQueue', user.backend.id]);
         return createResponse(c, {}, 'ok');
     }
 
@@ -42,7 +45,7 @@ async function handlesavePlayQueue(c: Context) {
     });
 
     if (!playQueue.success) return createResponse(c, {}, 'failed', { code: 10, message: 'A field is set wrong' });
-    await database.set(['playQueue', isValidated.username.toLowerCase()], playQueue.data);
+    await database.set(['playQueue', user.backend.id], playQueue.data);
 
     return createResponse(c, {}, 'ok');
 }

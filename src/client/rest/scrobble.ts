@@ -1,6 +1,6 @@
 import { Context, Hono } from 'hono';
-import { checkInternetConnection, config, createResponse, database, getField, signParams, validateAuth } from '../../util.ts';
-import { nowPlaying, Song, User, userData, userDataSchema } from '../../zod.ts';
+import { checkInternetConnection, config, createResponse, database, getField, getUserByUsername, signParams, validateAuth } from '../../util.ts';
+import { nowPlaying, Song, userData, userDataSchema } from '../../zod.ts';
 
 const scrobble = new Hono();
 
@@ -24,7 +24,10 @@ async function handleScrobble(c: Context) {
     const track = (await database.get(['tracks', id])).value as Song | null;
     if (!track) return createResponse(c, {}, 'failed', { code: 70, message: 'Song not found' });
 
-    const nowPlayingKey = ['nowPlaying', isValidated.username, 'client', client, 'track', track.subsonic.id];
+    const user = await getUserByUsername(isValidated.username);
+    if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
+
+    const nowPlayingKey = ['nowPlaying', user.backend.id, 'client', client, 'track', track.subsonic.id];
     const nowPlayingEntry = (await database.get(nowPlayingKey)).value as nowPlaying | undefined;
 
     if (!nowPlayingEntry && !submission) {
@@ -38,7 +41,7 @@ async function handleScrobble(c: Context) {
 
     if (submission) {
         await database.delete(nowPlayingKey);
-        let userTrackData = (await database.get(['userData', isValidated.username, 'track', track.subsonic.id])).value as userData | undefined;
+        let userTrackData = (await database.get(['userData', user.backend.id, 'track', track.subsonic.id])).value as userData | undefined;
         if (!userTrackData) {
             userTrackData = userDataSchema.parse({
                 id: track.subsonic.id,
@@ -50,7 +53,7 @@ async function handleScrobble(c: Context) {
             userTrackData.playCount = (userTrackData.playCount || 0) + 1;
         }
 
-        let userAlbumData = (await database.get(['userData', isValidated.username, 'album', track.subsonic.albumId])).value as userData | undefined;
+        let userAlbumData = (await database.get(['userData', user.backend.id, 'album', track.subsonic.albumId])).value as userData | undefined;
         if (!userAlbumData) {
             userAlbumData = userDataSchema.parse({
                 id: track.subsonic.albumId,
@@ -62,15 +65,14 @@ async function handleScrobble(c: Context) {
             userAlbumData.playCount = (userTrackData.playCount || 0) + 1;
         }
 
-        await database.set(['userData', isValidated.username, 'track', track.subsonic.id], userTrackData);
-        await database.set(['userData', isValidated.username, 'album', track.subsonic.albumId], userAlbumData);
+        await database.set(['userData', user.backend.id, 'track', track.subsonic.id], userTrackData);
+        await database.set(['userData', user.backend.id, 'album', track.subsonic.albumId], userAlbumData);
     }
 
     const internetAccess = await checkInternetConnection();
 
     // **LastFM Scrobbling**
     if (internetAccess && config.last_fm?.enable_scrobbling && config.last_fm.api_key && config.last_fm.api_secret) {
-        const user = (await database.get(['users', isValidated.username.toLowerCase()])).value as User | null;
         if (user?.backend.lastFMSessionKey) {
             const sig = new URLSearchParams({
                 method: submission ? 'track.scrobble' : 'track.updateNowPlaying',

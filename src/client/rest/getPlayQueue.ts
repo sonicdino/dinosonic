@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, validateAuth } from '../../util.ts';
+import { createResponse, database, getUserByUsername, validateAuth } from '../../util.ts';
 import { PlayQueue, Song, SongID3, userData } from '../../zod.ts';
 
 const getPlayQueue = new Hono();
@@ -7,7 +7,11 @@ const getPlayQueue = new Hono();
 async function handlegetPlayQueue(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
-    const playQueue = (await database.get(['playQueue', isValidated.username.toLowerCase()])).value as PlayQueue | undefined;
+
+    const user = await getUserByUsername(isValidated.username);
+    if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
+
+    const playQueue = (await database.get(['playQueue', user.backend.id])).value as PlayQueue | undefined;
     if (!playQueue) return createResponse(c, {}, 'ok');
     const entry: SongID3[] = [];
 
@@ -15,7 +19,7 @@ async function handlegetPlayQueue(c: Context) {
         const song = (await database.get(['tracks', trackId as string])).value as Song | undefined;
         if (!song) return createResponse(c, {}, 'failed', { code: 70, message: 'Song not found' });
 
-        const userData = (await database.get(['userData', isValidated.username, 'track', trackId as string])).value as userData | undefined;
+        const userData = (await database.get(['userData', user.backend.id, 'track', trackId as string])).value as userData | undefined;
         if (userData) {
             if (userData.starred) song.subsonic.starred = userData.starred.toISOString();
             if (userData.played) song.subsonic.played = userData.played.toISOString();

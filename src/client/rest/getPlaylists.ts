@@ -1,6 +1,6 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, getField, validateAuth } from '../../util.ts';
-import { Playlist } from '../../zod.ts';
+import { createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
+import { Playlist, User } from '../../zod.ts';
 
 const getPlaylists = new Hono();
 
@@ -12,7 +12,7 @@ async function handleGetPlaylists(c: Context) {
     const username = await getField(c, 'username');
 
     // Check if user is requesting playlists for another user (admin only)
-    if (username && username !== isValidated.username && !isValidated.adminRole) {
+    if (username && username.toLowerCase() !== isValidated.username.toLowerCase() && !isValidated.adminRole) {
         return createResponse(c, {}, 'failed', {
             code: 50,
             message: 'Only admins can retrieve playlists for other users',
@@ -22,17 +22,23 @@ async function handleGetPlaylists(c: Context) {
     const targetUsername = username || isValidated.username;
     const allowedPlaylists = [];
 
+    const user = await getUserByUsername(targetUsername);
+    if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "User doesn't exist" });
+
     for await (const entry of database.list({ prefix: ['playlists'] })) {
         const playlist = entry.value as Playlist;
 
         // Include the playlist if:
         // 1. It belongs to the target user, or
         // 2. It's public (for non-admin users viewing all playlists)
-        if (playlist.owner === targetUsername || (playlist.public && !username)) {
+        if (playlist.owner === user.backend.id || (playlist.public && !username)) {
+            let ownerUser = (await database.get(['users', playlist.owner])).value as User | null;
+            if (!ownerUser) ownerUser = user;
+
             allowedPlaylists.push({
                 id: playlist.id,
                 name: playlist.name,
-                owner: playlist.owner,
+                owner: ownerUser.subsonic.username,
                 public: playlist.public,
                 created: playlist.created.toISOString(),
                 changed: playlist.changed.toISOString(),

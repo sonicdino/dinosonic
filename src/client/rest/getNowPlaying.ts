@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, validateAuth } from '../../util.ts';
+import { createResponse, database, getUserByUsername, validateAuth } from '../../util.ts';
 import { nowPlaying, userData } from '../../zod.ts';
 
 const getNowPlaying = new Hono();
@@ -9,11 +9,14 @@ async function handlegetNowPlaying(c: Context) {
     if (isValidated instanceof Response) return isValidated;
     const entries = [];
 
+    const user = await getUserByUsername(isValidated.username);
+    if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
+
     let i = 0;
     for await (const entry of database.list({ prefix: ['nowPlaying'] })) {
         const item = entry.value as nowPlaying;
         const song = item.track;
-        const userData = (await database.get(['userData', isValidated.username, 'track', song.id])).value as userData | undefined;
+        const userData = (await database.get(['userData', user.backend.id, 'track', song.id])).value as userData | undefined;
         if (userData) {
             if (userData.starred) song.starred = userData.starred.toISOString();
             if (userData.played) song.played = userData.played.toISOString();

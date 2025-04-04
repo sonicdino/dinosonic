@@ -5,9 +5,10 @@ import {
     decryptForTokenAuth,
     deleteUserReferences,
     encryptForTokenAuth,
+    getNextId,
     getSessionKey,
+    getUserByUsername,
     SERVER_VERSION,
-    updateUsernameReferences,
 } from '../../util.ts';
 import { generateJWT } from '../middleware.ts';
 import { deleteCookie, setCookie } from 'cookies';
@@ -22,7 +23,7 @@ api.get('/version', (c: Context) => {
 
 api.get('/status', async (c: Context) => {
     const sessionUser = c.get('user') as { user: SubsonicUser; exp: number };
-    const user = (await database.get(['users', sessionUser.user.username.toLowerCase()])).value as User | null;
+    const user = await getUserByUsername(sessionUser.user.username);
     if (!user) return c.json({ error: 'User not found. Try relogging.' }, 401);
 
     return c.json({
@@ -68,13 +69,14 @@ api.post('/users', async (c: Context) => {
     let { username, password } = await c.req.json();
 
     if (!username || !password) return c.json({ error: 'Missing fields' }, 400);
-    const exists = (await database.get(['users', username.toLowerCase()])).value as User | null;
+    const exists = await getUserByUsername(username);
     if (exists) return c.json({ error: 'User already exists!' }, 400);
 
     password = await encryptForTokenAuth(password);
 
     const newUser: User = {
         backend: {
+            id: await getNextId('u'),
             username: username.toLowerCase(),
             password,
         },
@@ -95,7 +97,7 @@ api.post('/users', async (c: Context) => {
         },
     };
 
-    await database.set(['users', username.toLowerCase()], newUser);
+    await database.set(['users', newUser.backend.id], newUser);
     return c.json({ message: 'User created' });
 });
 
@@ -108,26 +110,18 @@ api.put('/users/:username', async (c: Context) => {
     }
 
     // Fetch the existing user
-    const existingUser = (await database.get(['users', oldUsername.toLowerCase()])).value as User | null;
+    const existingUser = await getUserByUsername(oldUsername);
     if (!existingUser) return c.json({ error: 'User not found' }, 404);
 
     // Parse request body
     const updatedData = await c.req.json();
     const newUsername = updatedData.username?.toLowerCase() || oldUsername.toLowerCase();
 
-    // Check if username is changing
-    const usernameChanged = oldUsername.toLowerCase() !== newUsername;
-
-    // Update password if provided
-    try {
-        if (usernameChanged) await updateUsernameReferences(oldUsername, newUsername);
-    } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-        return c.json({ error: errorMessage }, 400);
+    if (updatedData.password) existingUser.backend.password = await encryptForTokenAuth(updatedData.password);
+    if (oldUsername.toLowerCase() !== newUsername) {
+        existingUser.subsonic.username = updatedData.username;
+        existingUser.backend.username = newUsername;
     }
-    // Update username fields
-    existingUser.subsonic.username = newUsername;
-    existingUser.backend.username = newUsername;
 
     // Validate user object
     const updatedUser = UserSchema.safeParse({
@@ -140,12 +134,9 @@ api.put('/users/:username', async (c: Context) => {
     }
 
     // If username changed, update all references
-    if (usernameChanged) {
-        await updateUsernameReferences(oldUsername, newUsername);
-    }
 
     // Save updated user
-    await database.set(['users', newUsername], updatedUser.data);
+    await database.set(['users', updatedUser.data.backend.id], updatedUser.data);
 
     return c.json({ message: 'User updated' });
 });
@@ -158,11 +149,11 @@ api.delete('/users/:username', async (c: Context) => {
     if (sessionUser.user.username === username) return c.json({ error: 'You cannot delete yourself' }, 400);
 
     // Fetch the user to check if they exist
-    const existingUser = await database.get(['users', username.toLowerCase()]);
-    if (!existingUser.value) return c.json({ error: 'User not found' }, 404);
+    const existingUser = await getUserByUsername(username);
+    if (!existingUser) return c.json({ error: 'User not found' }, 404);
 
     // Delete everything related to the user
-    await deleteUserReferences(username.toLowerCase());
+    await deleteUserReferences(existingUser.backend.id);
 
     return c.json({ message: 'User and all related data deleted' });
 });
@@ -173,7 +164,7 @@ api.get('/users/:username', async (c: Context) => {
 
     if (!sessionUser.user.adminRole && sessionUser.user.username !== username) return c.json({ error: 'Unauthorized' }, 403);
 
-    const user = (await database.get(['users', username.toLowerCase()])).value as User | null;
+    const user = await getUserByUsername(username);
     if (!user) return c.json({ error: 'User not found' }, 404);
 
     return c.json(user.subsonic);
@@ -185,7 +176,7 @@ api.post('/login', async (c: Context) => {
     if (!username) return c.json({ error: 'No username provided' }, 401);
     if (!password) return c.json({ error: 'No password provided' }, 401);
 
-    const user = (await database.get(['users', username.toLowerCase()])).value as User | null;
+    const user = await getUserByUsername(username);
     if (!user) return c.json({ error: "User doesn't exist" }, 401);
 
     const originalPassword = await decryptForTokenAuth(user.backend.password);
@@ -225,22 +216,22 @@ api.get('/link/lastfm', (c) => {
 
 api.get('/unlink/lastfm', async (c: Context) => {
     const sessionUser = c.get('user') as { user: SubsonicUser; exp: number };
-    const user = (await database.get(['users', sessionUser.user.username.toLowerCase()])).value as User | null;
+    const user = await getUserByUsername(sessionUser.user.username);
     if (!user) return c.json({ error: 'User not found. Try relogging.' }, 401);
 
     user.backend.lastFMSessionKey = undefined;
-    await database.set(['users', user.backend.username], user);
+    await database.set(['users', user.backend.id], user);
 
     return c.redirect('/admin/');
 });
 
 api.get('/unlink/listenbrainz', async (c: Context) => {
     const sessionUser = c.get('user') as { user: SubsonicUser; exp: number };
-    const user = (await database.get(['users', sessionUser.user.username.toLowerCase()])).value as User | null;
+    const user = await getUserByUsername(sessionUser.user.username);
     if (!user) return c.json({ error: 'User not found. Try relogging.' }, 401);
 
     user.backend.listenbrainzToken = undefined;
-    await database.set(['users', user.backend.username], user);
+    await database.set(['users', user.backend.id], user);
 });
 
 api.get('/callback/lastfm', async (c: Context) => {
@@ -251,11 +242,11 @@ api.get('/callback/lastfm', async (c: Context) => {
     if (!sessionKey) return c.text('Failed to get session', 400);
 
     const sessionUser = c.get('user') as { user: SubsonicUser; exp: number };
-    const user = (await database.get(['users', sessionUser.user.username.toLowerCase()])).value as User | null;
+    const user = await getUserByUsername(sessionUser.user.username);
     if (!user) return c.json({ error: 'User not found. Try relogging.' }, 401);
 
     user.backend.lastFMSessionKey = sessionKey;
-    await database.set(['users', user.backend.username], user);
+    await database.set(['users', user.backend.id], user);
 
     return c.redirect('/admin/');
 });

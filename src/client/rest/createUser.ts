@@ -1,6 +1,6 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, encryptForTokenAuth, getField, validateAuth } from '../../util.ts';
-import { User, UserSchema } from '../../zod.ts';
+import { createResponse, database, encryptForTokenAuth, getField, getNextId, getUserByUsername, validateAuth } from '../../util.ts';
+import { UserSchema } from '../../zod.ts';
 
 const createUser = new Hono();
 
@@ -30,14 +30,14 @@ async function handlecreateUser(c: Context) {
     if (!username) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'username'" });
     if (!password) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'password'" });
 
-    const user = (await database.get(['users', username.toLowerCase()])).value as User | undefined;
+    const user = await getUserByUsername(username);
     if (user) return createResponse(c, {}, 'failed', { code: 40, message: 'That username is already in use' });
 
     if (password.startsWith('enc:')) password = atob(password.slice(4));
     password = await encryptForTokenAuth(password);
 
     const User = UserSchema.parse({
-        backend: { username: username.toLowerCase(), password },
+        backend: { id: await getNextId('u'), username: username.toLowerCase(), password },
         subsonic: {
             username,
             email,
@@ -56,7 +56,7 @@ async function handlecreateUser(c: Context) {
         },
     });
 
-    await database.set(['users', username.toLowerCase()], User);
+    await database.set(['users', User.backend.id], User);
 
     return createResponse(c, {}, 'ok');
 }

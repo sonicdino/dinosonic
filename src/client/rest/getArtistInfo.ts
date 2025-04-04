@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, getField, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
 import { Album, Artist, ArtistID3, Song, userData } from '../../zod.ts';
 import { getArtistIDByName } from '../../MediaScanner.ts';
 
@@ -21,6 +21,9 @@ async function handlegetArtistInfo(c: Context) {
     if (!artist.artistInfo) return createResponse(c, {}, 'ok');
     const similarArtist: ArtistID3[] = [];
 
+    const user = await getUserByUsername(isValidated.username);
+    if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
+
     for (const artistName of artist.artistInfo.similarArtist) {
         const artistId = await getArtistIDByName(artistName);
         if (!artistId) continue;
@@ -28,7 +31,7 @@ async function handlegetArtistInfo(c: Context) {
         const Artist = (await database.get(['artists', artistId as string])).value as Artist | undefined;
         if (!Artist) continue;
 
-        const userData = (await database.get(['userData', isValidated.username, 'artist', artistId as string])).value as userData | undefined;
+        const userData = (await database.get(['userData', user.backend.id, 'artist', artistId as string])).value as userData | undefined;
         if (userData) {
             if (userData.starred) Artist.artist.starred = userData.starred.toISOString();
             if (userData.userRating) Artist.artist.userRating = userData.userRating;

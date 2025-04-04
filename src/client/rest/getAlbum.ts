@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, getField, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
 import { Album, Song, SongID3, userData } from '../../zod.ts';
 
 const getAlbum = new Hono();
@@ -15,7 +15,10 @@ async function handlegetAlbum(c: Context) {
     if (!Album) return createResponse(c, {}, 'failed', { code: 70, message: 'Album not found' });
     const album = Album.subsonic;
 
-    const userData = (await database.get(['userData', isValidated.username, 'album', albumId])).value as userData | undefined;
+    const user = await getUserByUsername(isValidated.username);
+    if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
+
+    const userData = (await database.get(['userData', user.backend.id, 'album', albumId])).value as userData | undefined;
     if (userData) {
         if (userData.starred) album.starred = userData.starred.toISOString();
         if (userData.played) album.played = userData.played.toISOString();
@@ -27,7 +30,7 @@ async function handlegetAlbum(c: Context) {
         const track = (await database.get(['tracks', album.song[i] as string])).value as Song | undefined;
         if (!track) return createResponse(c, {}, 'failed', { code: 70, message: 'Album song not found' });
 
-        const userData = (await database.get(['userData', isValidated.username, 'track', track.subsonic.id])).value as userData | undefined;
+        const userData = (await database.get(['userData', user.backend.id, 'track', track.subsonic.id])).value as userData | undefined;
         if (userData) {
             if (userData.starred) track.subsonic.starred = userData.starred.toISOString();
             if (userData.played) track.subsonic.played = userData.played.toISOString();

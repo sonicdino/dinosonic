@@ -2,18 +2,16 @@ import { stringify } from 'xml';
 import { md5 } from 'md5';
 import { encodeHex } from 'hex';
 import { Context } from 'hono';
-import type { Config, Playlist, SubsonicUser, User } from './zod.ts';
+import { type Config, Playlist, type SubsonicUser, type User, UserSchema } from './zod.ts';
 import * as log from 'log';
 import { blue, bold, gray, red, yellow } from 'colors';
 
 const SERVER_NAME = 'Dinosonic';
-export const SERVER_VERSION = '0.0.21';
+export const SERVER_VERSION = '0.0.25';
 const API_VERSION = '1.16.1';
 export let database: Deno.Kv;
 export let config: Config;
 export let logger = log.getLogger();
-
-let ENCRYPTION_KEY: Promise<CryptoKey>;
 
 export const ERROR_MESSAGES: Record<number, string> = {
     0: 'A generic error.',
@@ -108,7 +106,7 @@ export async function checkInternetConnection() {
     }
 }
 
-export async function getNextId(type: 't' | 'a' | 'A' | 'p'): Promise<string> {
+export async function getNextId(type: 't' | 'a' | 'A' | 'p' | 'u'): Promise<string> {
     const idKey = ['counters', type];
     const lastId = (await database.get(idKey)).value as number || 0;
     const newId = lastId + 1;
@@ -118,9 +116,7 @@ export async function getNextId(type: 't' | 'a' | 'A' | 'p'): Promise<string> {
 
 export function setConstants(Database: Deno.Kv, Config: Config) {
     config = Config;
-    database = Database;
-    ENCRYPTION_KEY = getOrCreateEncryptionKey();
-    return;
+    return database = Database;
 }
 
 export function separatorsToRegex(separators: string[]): RegExp {
@@ -186,78 +182,6 @@ export function parseTimeToMs(timeStr: string): number {
         }
         return total;
     }, 0);
-}
-
-export async function updateUsernameReferences(oldUsername: string, newUsername: string) {
-    const existingUser = await database.get(['users', newUsername.toLowerCase()]);
-    if (existingUser.value) throw new Error(`Username '${newUsername}' is already taken.`);
-
-    const txn = database.atomic();
-
-    // Move userData entries
-    for await (const entry of database.list({ prefix: ['userData', oldUsername.toLowerCase()] })) {
-        txn.set(['userData', newUsername.toLowerCase(), ...entry.key.slice(2)], entry.value);
-        txn.delete(entry.key);
-    }
-
-    // Move play queue
-    const playQueue = await database.get(['playQueue', oldUsername.toLowerCase()]);
-    if (playQueue.value) {
-        txn.set(['playQueue', newUsername.toLowerCase()], playQueue.value);
-        txn.delete(playQueue.key);
-    }
-
-    // Move now playing entries
-    for await (const entry of database.list({ prefix: ['nowPlaying', oldUsername.toLowerCase()] })) {
-        txn.set(['nowPlaying', newUsername.toLowerCase(), ...entry.key.slice(2)], entry.value);
-        txn.delete(entry.key);
-    }
-
-    // Update playlists where owner is the old username
-    for await (const entry of database.list({ prefix: ['playlists'] })) {
-        const playlist = entry.value as Playlist;
-        if (playlist.owner.toLowerCase() === oldUsername.toLowerCase()) {
-            playlist.owner = newUsername;
-            txn.set(entry.key, playlist);
-        }
-    }
-
-    // Delete the old user entry
-    txn.delete(['users', oldUsername.toLowerCase()]);
-
-    // Commit transaction
-    await txn.commit();
-}
-
-export async function deleteUserReferences(username: string) {
-    const txn = database.atomic();
-
-    // Delete user entry
-    txn.delete(['users', username]);
-
-    // Delete userData entries
-    for await (const entry of database.list({ prefix: ['userData', username] })) {
-        txn.delete(entry.key);
-    }
-
-    // Delete play queue
-    txn.delete(['playQueue', username]);
-
-    // Delete now playing entries
-    for await (const entry of database.list({ prefix: ['nowPlaying', username] })) {
-        txn.delete(entry.key);
-    }
-
-    // Delete playlists owned by the user
-    for await (const entry of database.list({ prefix: ['playlists'] })) {
-        const playlist = entry.value as Playlist;
-        if (playlist.owner === username) {
-            txn.delete(entry.key);
-        }
-    }
-
-    // Commit transaction
-    await txn.commit();
 }
 
 export async function getSessionKey(token: string): Promise<string | null> {
@@ -338,7 +262,7 @@ export async function encryptForTokenAuth(password: string): Promise<string> {
 
     const encryptedData = await crypto.subtle.encrypt(
         { name: 'AES-GCM', iv },
-        await ENCRYPTION_KEY,
+        await getOrCreateEncryptionKey(),
         data,
     );
 
@@ -358,12 +282,53 @@ export async function decryptForTokenAuth(encryptedData: string): Promise<string
 
     const decrypted = await crypto.subtle.decrypt(
         { name: 'AES-GCM', iv },
-        await ENCRYPTION_KEY,
+        await getOrCreateEncryptionKey(),
         ciphertext,
     );
 
     const decoder = new TextDecoder();
     return decoder.decode(decrypted);
+}
+
+export async function deleteUserReferences(id: string) {
+    const txn = database.atomic();
+
+    // Delete user entry
+    txn.delete(['users', id]);
+
+    // Delete userData entries
+    for await (const entry of database.list({ prefix: ['userData', id] })) {
+        txn.delete(entry.key);
+    }
+
+    // Delete play queue
+    txn.delete(['playQueue', id]);
+
+    // Delete now playing entries
+    for await (const entry of database.list({ prefix: ['nowPlaying', id] })) {
+        txn.delete(entry.key);
+    }
+
+    // Delete playlists owned by the user
+    for await (const entry of database.list({ prefix: ['playlists'] })) {
+        const playlist = entry.value as Playlist;
+        if (playlist.owner === id) {
+            txn.delete(entry.key);
+        }
+    }
+
+    // Commit transaction
+    await txn.commit();
+}
+
+export async function getUserByUsername(name: string): Promise<User | undefined> {
+    for await (const entry of database.list({ prefix: ['users'] })) {
+        const parsedEntry = UserSchema.safeParse(entry.value as User | null);
+        if (parsedEntry.success) {
+            const user = parsedEntry.data;
+            if (user.backend.username === name.toLowerCase().trim()) return user;
+        }
+    }
 }
 
 /**
@@ -407,7 +372,7 @@ export async function validateAuth(c: Context): Promise<Response | SubsonicUser>
     if (!client) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'c'" });
 
     // 🔍 Get user from the database
-    const user = (await database.get(['users', username.toLowerCase()])).value as User | null;
+    const user = await getUserByUsername(username);
     if (!user) return createResponse(c, {}, 'failed', { code: 40, message: ERROR_MESSAGES[40] });
 
     // ✅ Token Authentication

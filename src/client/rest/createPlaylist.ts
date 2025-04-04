@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, getField, getFields, getNextId, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, getFields, getNextId, getUserByUsername, validateAuth } from '../../util.ts';
 import { Playlist, PlaylistSchema, Song, userData } from '../../zod.ts';
 
 const createPlaylist = new Hono();
@@ -14,6 +14,9 @@ async function handleCreatePlaylist(c: Context) {
             message: 'You do not have permission to create or modify playlists',
         });
     }
+
+    const user = await getUserByUsername(isValidated.username);
+    if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
 
     const playlistId = await getField(c, 'playlistId');
     const name = await getField(c, 'name');
@@ -36,7 +39,7 @@ async function handleCreatePlaylist(c: Context) {
         if (!playlist) return createResponse(c, {}, 'failed', { code: 70, message: 'Playlist not found' });
 
         // Check ownership
-        if (playlist.owner !== isValidated.username && !isValidated.adminRole) {
+        if (playlist.owner !== user.backend.id && !isValidated.adminRole) {
             return createResponse(c, {}, 'failed', {
                 code: 50,
                 message: 'You do not have permission to modify this playlist',
@@ -54,7 +57,7 @@ async function handleCreatePlaylist(c: Context) {
         const song = (await database.get(['tracks', songId])).value as Song | null;
         if (!song) continue; // Skip invalid song IDs
 
-        const userData = (await database.get(['userData', isValidated.username, 'track', songId])).value as userData | undefined;
+        const userData = (await database.get(['userData', user.backend.id, 'track', songId])).value as userData | undefined;
         if (userData) {
             if (userData.starred) song.subsonic.starred = userData.starred.toISOString();
             if (userData.played) song.subsonic.played = userData.played.toISOString();
@@ -75,7 +78,7 @@ async function handleCreatePlaylist(c: Context) {
         playlist = PlaylistSchema.parse({
             id: newPlaylistId,
             name: name as string,
-            owner: isValidated.username,
+            owner: user.backend.id,
             public: false, // Default to private
             created: new Date(),
             changed: new Date(),
@@ -100,7 +103,7 @@ async function handleCreatePlaylist(c: Context) {
             playlist: {
                 id: playlist.id,
                 name: playlist.name,
-                owner: playlist.owner,
+                owner: isValidated.username,
                 public: playlist.public,
                 created: playlist.created.toISOString(),
                 changed: playlist.changed.toISOString(),

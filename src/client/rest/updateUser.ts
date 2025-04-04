@@ -1,6 +1,6 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, encryptForTokenAuth, getField, updateUsernameReferences, validateAuth } from '../../util.ts';
-import { User, UserSchema } from '../../zod.ts';
+import { createResponse, database, encryptForTokenAuth, getField, getUserByUsername, validateAuth } from '../../util.ts';
+import { UserSchema } from '../../zod.ts';
 
 const updateUser = new Hono();
 
@@ -11,7 +11,7 @@ async function handleUpdateUser(c: Context) {
 
     const toBoolean = (value: unknown) => (value !== undefined ? value === 'true' : undefined);
 
-    const newUsername = await getField(c, 'username');
+    const username = await getField(c, 'username');
     let password = await getField(c, 'password');
     const email = await getField(c, 'email');
     const adminRole = toBoolean(await getField(c, 'adminRole'));
@@ -23,23 +23,22 @@ async function handleUpdateUser(c: Context) {
     const shareRole = toBoolean(await getField(c, 'shareRole'));
     const scrobblingEnabled = toBoolean(await getField(c, 'scrobblingEnabled'));
 
-    if (!newUsername) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'username'" });
+    if (!username) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'username'" });
     if (password && password.startsWith('enc:')) password = atob(password.slice(4));
     if (password) password = await encryptForTokenAuth(password);
 
-    const existingUser = (await database.get(['users', newUsername.toLowerCase()])).value as User | undefined;
+    const existingUser = await getUserByUsername(username);
     if (!existingUser) return createResponse(c, {}, 'failed', { code: 40, message: "User doesn't exist. Try creating the user instead." });
-
-    const oldUsername = existingUser.backend.username;
-    const usernameChanged = oldUsername !== newUsername.toLowerCase();
 
     const updatedUser = await UserSchema.safeParseAsync({
         backend: {
-            username: newUsername.toLowerCase(),
+            ...existingUser.backend,
+            username: username.toLowerCase(),
             password: password ?? existingUser.backend.password, // Keep existing password if not provided
         },
         subsonic: {
-            username: newUsername,
+            ...existingUser.subsonic,
+            username: username,
             email: email ?? existingUser.subsonic.email,
             adminRole: adminRole ?? existingUser.subsonic.adminRole,
             settingsRole: settingsRole ?? existingUser.subsonic.settingsRole,
@@ -54,15 +53,8 @@ async function handleUpdateUser(c: Context) {
 
     if (!updatedUser.success) return createResponse(c, {}, 'failed', { code: 10, message: 'A field is set wrong' });
 
-    // If the username changed, update all references
-    try {
-        if (usernameChanged) await updateUsernameReferences(oldUsername, newUsername);
-    } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-        return createResponse(c, {}, 'failed', { code: 20, message: errorMessage });
-    }
     // Save updated user
-    await database.set(['users', newUsername], updatedUser.data);
+    await database.set(['users', updatedUser.data.backend.id], updatedUser.data);
 
     return createResponse(c, {}, 'ok');
 }

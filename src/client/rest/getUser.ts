@@ -1,7 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, getField, validateAuth } from '../../util.ts';
-import { User } from '../../zod.ts';
-
+import { createResponse, getField, getUserByUsername, validateAuth } from '../../util.ts';
 const getUser = new Hono();
 
 async function handlegetUser(c: Context) {
@@ -12,7 +10,7 @@ async function handlegetUser(c: Context) {
     const username = await getField(c, 'username') || '';
     if (!username) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'username'" });
 
-    const user = (await database.get(['users', username.toLowerCase()])).value as User | undefined;
+    const user = await getUserByUsername(username);
     if (!user) return createResponse(c, {}, 'failed', { code: 70, message: 'User not found' });
 
     return createResponse(c, {
