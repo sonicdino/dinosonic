@@ -69,7 +69,7 @@ function convertToLRC(lyrics: StructuredLyrics[]) {
 async function fetchLyrics(trackName: string, artistName: string): Promise<string | null> {
     const artistNameGet = artistName.split(separatorsToRegex(config.artist_separators))[0];
 
-    // Search in LRCLIB
+    // Get in LRCLIB
     const lrclibGetUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(trackName)}&artist_name=${encodeURIComponent(artistNameGet)}`;
 
     try {
@@ -85,7 +85,7 @@ async function fetchLyrics(trackName: string, artistName: string): Promise<strin
         logger.error('Error fetching from LRCLIB Get:', error);
     }
 
-    // Search in LRCLIB Search
+    // Search in LRCLIB
     const lrclibSearchUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(`${artistName} ${trackName}`)}`;
 
     try {
@@ -108,35 +108,6 @@ async function fetchLyrics(trackName: string, artistName: string): Promise<strin
         }
     } catch (error) {
         logger.error('Error fetching from LRCLIB Search:', error);
-    }
-
-    // Search in NetEase
-    const neteaseUrl = `https://music.163.com/api/search/get?offset=0&type=1&s=${encodeURIComponent(`${artistName} ${trackName}`)}`;
-
-    try {
-        const neteaseResponse = await fetch(neteaseUrl);
-        if (!neteaseResponse.ok) return null;
-
-        const jsonData = await neteaseResponse.json();
-        if (!jsonData?.result?.songs || jsonData.result.songs.length === 0) return null;
-
-        for (const song of jsonData.result.songs) {
-            if (
-                song.name.toLowerCase() === trackName.toLowerCase() &&
-                song.artists.some((artist: { name: string }) => artist.name.toLowerCase() === artistName.toLowerCase())
-            ) {
-                const lyricUrl = `https://music.163.com/api/song/lyric?id=${song.id}&kv=-1&lv=-1`;
-                const lyricResponse = await fetch(lyricUrl);
-
-                if (!lyricResponse.ok) return null;
-
-                const lyricJson = await lyricResponse.json();
-                logger.debug('Using NetEase');
-                return lyricJson.klyric?.lyric || lyricJson.lrc?.lyric || null;
-            }
-        }
-    } catch (error) {
-        logger.error(`Error getting NetEase Lyrics for '${trackName}' by '${artistName}'. Error:`, error);
     }
 
     return null;

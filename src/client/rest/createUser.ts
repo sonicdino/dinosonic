@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, encryptForTokenAuth, getField, getNextId, getUserByUsername, validateAuth } from '../../util.ts';
+import { createResponse, database, encryptForTokenAuth, getField, getNextId, getUserByUsername, hexToString, validateAuth } from '../../util.ts';
 import { UserSchema } from '../../zod.ts';
 
 const createUser = new Hono();
@@ -33,7 +33,7 @@ async function handlecreateUser(c: Context) {
     const user = await getUserByUsername(username);
     if (user) return createResponse(c, {}, 'failed', { code: 40, message: 'That username is already in use' });
 
-    if (password.startsWith('enc:')) password = atob(password.slice(4));
+    if (password.startsWith('enc:')) password = hexToString(password.slice(4));
     password = await encryptForTokenAuth(password);
 
     const User = UserSchema.parse({

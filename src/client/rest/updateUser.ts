@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, encryptForTokenAuth, getField, getUserByUsername, validateAuth } from '../../util.ts';
+import { createResponse, database, encryptForTokenAuth, getField, getUserByUsername, hexToString, validateAuth } from '../../util.ts';
 import { UserSchema } from '../../zod.ts';
 
 const updateUser = new Hono();
@@ -24,7 +24,7 @@ async function handleUpdateUser(c: Context) {
     const scrobblingEnabled = toBoolean(await getField(c, 'scrobblingEnabled'));
 
     if (!username) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'username'" });
-    if (password && password.startsWith('enc:')) password = atob(password.slice(4));
+    if (password && password.startsWith('enc:')) password = hexToString(password.slice(4));
     if (password) password = await encryptForTokenAuth(password);
 
     const existingUser = await getUserByUsername(username);

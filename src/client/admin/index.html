@@ -170,8 +170,8 @@
                 </div>
             </div>
             <div class="mt-4 flex justify-between">
-                <button id="save-user" class="bg-green-500 px-4 py-2 rounded hover-effect">Save</button>
-                <button id="close-modal" class="bg-gray-500 px-4 py-2 rounded hover-effect">Cancel</button>
+                <button id="save-user" class="bg-green-500 px-4 py-2 hover-effect">Save</button>
+                <button id="close-modal" class="bg-white text-black px-4 py-2 hover-effect">Cancel</button>
             </div>
         </div>
     </div>
@@ -365,7 +365,13 @@
 
                 if (data.lastFMScrobblingEnabled) {
                     lastfmButton.textContent = data.lastfm ? 'Unlink LastFM' : 'Link LastFM';
-                    lastfmButton.onclick = () => window.location.href = data.lastfm ? '/api/unlink/lastfm' : '/api/link/lastfm';
+                    lastfmButton.onclick = () => {
+                        if (data.lastfm && confirm('Are you sure you want to unlink your last.fm account?')) {
+                            window.location.href = '/api/unlink/lastfm'
+                        }
+
+                        if (!data.lastfm) window.location.href = '/api/link/lastfm'
+                    };
 
                     listenbrainzButton.textContent = data.listenbrainz ? 'Unlink ListenBrainz' : 'Link ListenBrainz';
                     listenbrainzButton.onclick = () =>
@@ -387,8 +393,10 @@
             }
 
             document.getElementById('logout-button').addEventListener('click', async () => {
-                await fetch('/api/logout', { method: 'POST', credentials: 'include' });
-                window.location.href = '/admin/login';
+                if (confirm(`Are you sure you want to log out?`)) {
+                    await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+                    window.location.href = '/admin/login';
+                }
             });
 
             // Close modal when clicking outside of it

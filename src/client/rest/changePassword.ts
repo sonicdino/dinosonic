@@ -1,5 +1,5 @@
 import { Context, Hono } from 'hono';
-import { createResponse, database, encryptForTokenAuth, getField, getUserByUsername, validateAuth } from '../../util.ts';
+import { createResponse, database, encryptForTokenAuth, getField, getUserByUsername, hexToString, validateAuth } from '../../util.ts';
 
 const changePassword = new Hono();
 
@@ -16,7 +16,7 @@ async function handlechangePassword(c: Context) {
     }
 
     if (!password) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'password'" });
-    if (password.startsWith('enc:')) password = atob(password.slice(4));
+    if (password.startsWith('enc:')) password = hexToString(password.slice(4));
 
     const user = await getUserByUsername(username);
     if (!user) return createResponse(c, {}, 'failed', { code: 40, message: "User doesn't exist. Try creating the user instead." });

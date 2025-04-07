@@ -7,8 +7,8 @@ import * as log from 'log';
 import { blue, bold, gray, red, yellow } from 'colors';
 
 const SERVER_NAME = 'Dinosonic';
-export const SERVER_VERSION = '0.0.25';
 const API_VERSION = '1.16.1';
+export const SERVER_VERSION = '0.0.26';
 export let database: Deno.Kv;
 export let config: Config;
 export let logger = log.getLogger();
@@ -321,6 +321,11 @@ export async function deleteUserReferences(id: string) {
     await txn.commit();
 }
 
+export function hexToString(hex: string): string {
+    const bytes = new Uint8Array(hex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)));
+    return new TextDecoder().decode(bytes);
+}
+
 export async function getUserByUsername(name: string): Promise<User | undefined> {
     for await (const entry of database.list({ prefix: ['users'] })) {
         const parsedEntry = UserSchema.safeParse(entry.value as User | null);
@@ -392,9 +397,7 @@ export async function validateAuth(c: Context): Promise<Response | SubsonicUser>
         let plainPassword = password;
 
         // Handle encoded passwords
-        if (password.startsWith('enc:')) {
-            plainPassword = atob(password.slice(4));
-        }
+        if (password.startsWith('enc:')) plainPassword = hexToString(password.slice(4));
 
         // Compare with stored hash
         const originalPassword = await decryptForTokenAuth(user.backend.password);

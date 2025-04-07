@@ -25,13 +25,12 @@ async function handlegetLyricsBySongId(c: Context) {
     if (!lyrics) return createResponse(c, {}, 'ok');
 
     const lines = lyrics.split('\n').filter((line) => line.trim());
-    const offset = parseInt(lines.find((line) => line.startsWith('[offset:'))?.match(/-?\d+/)?.[0] || '0');
 
     const Lyrics = lines
         .filter((line) => line.match(/^\[\d+:\d+\.\d+]/))
         .map((line) => {
             const match = line.match(/^\[(\d+:\d+\.\d+)](.*)/);
-            return match ? { start: timeToMs(match[1]) + offset, value: match[2].trim() } : null;
+            return match ? { start: timeToMs(match[1]), value: match[2].trim() } : null;
         })
         .filter((item) => item !== null);
 
@@ -40,7 +39,6 @@ async function handlegetLyricsBySongId(c: Context) {
             displayArtist: track.subsonic.artist,
             displayTitle: track.subsonic.title,
             lang: 'xxx',
-            offset: Number(offset),
             synced: true,
             line: Lyrics,
         },
@@ -48,7 +46,6 @@ async function handlegetLyricsBySongId(c: Context) {
             displayArtist: track.subsonic.artist,
             displayTitle: track.subsonic.title,
             lang: 'xxx',
-            offset: 100,
             synced: false,
             line: Lyrics.map(({ value }) => ({ value })),
         },
@@ -61,7 +58,7 @@ async function handlegetLyricsBySongId(c: Context) {
 async function fetchLyrics(trackName: string, artistName: string): Promise<string | null> {
     const artistNameGet = artistName.split(separatorsToRegex(config.artist_separators))[0];
 
-    // Search in LRCLIB
+    // Get in LRCLIB
     const lrclibGetUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(trackName)}&artist_name=${encodeURIComponent(artistNameGet)}`;
 
     try {
@@ -77,7 +74,7 @@ async function fetchLyrics(trackName: string, artistName: string): Promise<strin
         logger.error('Error fetching from LRCLIB Get:', error);
     }
 
-    // Search in LRCLIB Search
+    // Search in LRCLIB
     const lrclibSearchUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(`${artistName} ${trackName}`)}`;
 
     try {
@@ -100,35 +97,6 @@ async function fetchLyrics(trackName: string, artistName: string): Promise<strin
         }
     } catch (error) {
         logger.error('Error fetching from LRCLIB Search:', error);
-    }
-
-    // Search in NetEase
-    const neteaseUrl = `https://music.163.com/api/search/get?offset=0&type=1&s=${encodeURIComponent(`${artistName} ${trackName}`)}`;
-
-    try {
-        const neteaseResponse = await fetch(neteaseUrl);
-        if (!neteaseResponse.ok) return null;
-
-        const jsonData = await neteaseResponse.json();
-        if (!jsonData?.result?.songs || jsonData.result.songs.length === 0) return null;
-
-        for (const song of jsonData.result.songs) {
-            if (
-                song.name.toLowerCase() === trackName.toLowerCase() &&
-                song.artists.some((artist: { name: string }) => artist.name.toLowerCase() === artistName.toLowerCase())
-            ) {
-                const lyricUrl = `https://music.163.com/api/song/lyric?id=${song.id}&kv=-1&lv=-1`;
-                const lyricResponse = await fetch(lyricUrl);
-
-                if (!lyricResponse.ok) return null;
-
-                const lyricJson = await lyricResponse.json();
-                logger.debug('Using NetEase');
-                return lyricJson.klyric?.lyric || lyricJson.lrc?.lyric || null;
-            }
-        }
-    } catch (error) {
-        logger.error(`Error getting NetEase Lyrics for '${trackName}' by '${artistName}'. Error:`, error);
     }
 
     return null;
