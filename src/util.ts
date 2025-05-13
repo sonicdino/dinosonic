@@ -8,7 +8,7 @@ import { blue, bold, gray, red, yellow } from '@std/fmt/colors';
 
 const SERVER_NAME = 'Dinosonic';
 const API_VERSION = '1.16.1';
-export const SERVER_VERSION = '0.1.1';
+export const SERVER_VERSION = '0.1.2';
 export let database: Deno.Kv;
 export let config: Config;
 export let logger = log.getLogger();
@@ -225,6 +225,85 @@ export function signParams(params: URLSearchParams, apiSecret: string): string {
     signatureBase += apiSecret; // Append API secret at the end
 
     return encodeHex(md5(signatureBase)); // Hash with MD5
+}
+
+export async function ensureAdminUserExistsHybrid() {
+    const adminSetupFlagKey: Deno.KvKey = ['system', 'initialAdminCreated'];
+    const adminSetupFlagEntry = await database.get(adminSetupFlagKey);
+    const initialAdminShouldExist = adminSetupFlagEntry.value === true;
+    let actualAdminExists = false;
+
+    if (initialAdminShouldExist) {
+        logger.info('Initial admin setup flag is present. Verifying actual admin existence...');
+        // Verify by iterating and checking for adminRole
+        for await (const entry of database.list({ prefix: ['users'] })) {
+            const userParseResult = UserSchema.safeParse(entry.value);
+            if (userParseResult.success && userParseResult.data.subsonic.adminRole === true) {
+                actualAdminExists = true;
+                logger.info(`Verified admin user: ${userParseResult.data.subsonic.username} (ID: ${userParseResult.data.backend.id})`);
+                break;
+            }
+        }
+        if (!actualAdminExists) {
+            logger.warn('Admin setup flag was true, but no actual admin user found! This indicates an inconsistency.');
+            // Proceed to recreate the admin as if the flag was false.
+            // Optionally, you could just log an error and require manual intervention here.
+        }
+    }
+
+    // If flag wasn't set OR (flag was set BUT no admin was actually found)
+    if (!initialAdminShouldExist || (initialAdminShouldExist && !actualAdminExists)) {
+        if (!initialAdminShouldExist) {
+            logger.info('Initial admin setup flag not found or false. Creating admin user.');
+        } else {
+            logger.info('Admin setup flag was true, but verification failed. Recreating admin user.');
+        }
+
+        const adminId = await generateId();
+        const adminUsername = 'admin'; // Use a configurable default username
+        const adminPassword = config.default_admin_password;
+
+        const newAdminUser: User = {
+            backend: {
+                id: adminId,
+                username: adminUsername,
+                password: await encryptForTokenAuth(adminPassword),
+            },
+            subsonic: {
+                username: adminUsername,
+                adminRole: true,
+                scrobblingEnabled: true,
+                settingsRole: true,
+                downloadRole: true,
+                uploadRole: true,
+                playlistRole: true,
+                coverArtRole: true,
+                commentRole: true,
+                podcastRole: true,
+                streamRole: true,
+                jukeboxRole: false,
+                shareRole: false,
+            },
+        };
+
+        const validationResult = UserSchema.safeParse(newAdminUser);
+        if (validationResult.success) {
+            await database.set(['users', adminId], validationResult.data);
+            await database.set(adminSetupFlagKey, true); // Ensure flag is set (or re-set)
+            logger.info(`Admin user "${adminUsername}" created/recreated with ID: ${adminId}. Setup flag is now true.`);
+        } else {
+            logger.error('Failed to validate new admin user data. Admin not created/recreated.');
+            logger.error('Validation errors:', validationResult.error.issues);
+            // If creation fails, ensure the flag is not incorrectly true
+            if (initialAdminShouldExist && !actualAdminExists) {
+                // Consider setting the flag to false if recreation fails, so it tries again next time.
+                // await database.set(adminSetupFlagKey, false);
+            }
+        }
+    } else {
+        // This means: initialAdminShouldExist was true AND actualAdminExists was true.
+        logger.info('Admin user verified and exists. No action needed.');
+    }
 }
 
 // TODO: If these functions can be further improved, improve.

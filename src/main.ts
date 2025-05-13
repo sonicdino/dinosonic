@@ -1,7 +1,7 @@
 import { Config, ConfigSchema, nowPlaying } from './zod.ts';
 import { scanMediaDirectories } from './MediaScanner.ts';
 import { parseArgs } from '@std/cli';
-import { encryptForTokenAuth, generateId, logger, parseTimeToMs, SERVER_VERSION, setConstants, setupLogger } from './util.ts';
+import { ensureAdminUserExistsHybrid, logger, parseTimeToMs, SERVER_VERSION, setConstants, setupLogger } from './util.ts';
 import restRoutes from './client/rest/index.ts';
 import apiRoutes from './client/api/index.ts';
 import { Context, Hono, Next } from '@hono/hono';
@@ -136,26 +136,7 @@ async function cleanupNowPlaying() {
 setInterval(cleanupNowPlaying, 60 * 1000);
 cleanupNowPlaying();
 
-if (!(await database.get(['users', 'u1'])).value) {
-    logger.info("Admin user doesn't exist in the database. Creating one.");
-
-    await database.set(['users', 'u1'], {
-        backend: {
-            id: await generateId(),
-            username: 'admin',
-            password: await encryptForTokenAuth(config.default_admin_password),
-        },
-        subsonic: {
-            username: 'admin',
-            adminRole: true,
-            scrobblingEnabled: true,
-            settingsRole: true,
-            downloadRole: true,
-            playlistRole: true,
-            streamRole: true,
-        },
-    });
-}
+await ensureAdminUserExistsHybrid();
 
 if (config.scan_on_start) {
     logger.info('Starting media scan...');
