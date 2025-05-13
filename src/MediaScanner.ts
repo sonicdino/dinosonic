@@ -30,7 +30,6 @@ import { createTrackMapKey, getAlbumInfo, getArtistInfo, getUserLovedTracksMap, 
 import { getArtistCover } from './Spotify.ts';
 
 const seenFiles = new Set<string>();
-const MAX_TEXT_LENGTH = 500; // Set your desired max length here
 
 interface ScanStatus {
     scanning: boolean;
@@ -587,10 +586,8 @@ async function handleLastFMMetadata() {
             const info = await getAlbumInfo(album.subsonic.name, primaryArtistName);
 
             if (info && info.album) {
-                const albumNotes = info.album?.wiki?.content || info.album?.wiki?.summary || '';
-
                 const albumInfoParse = AlbumInfoSchema.safeParse({ // Validate with AlbumInfoSchema
-                    notes: albumNotes.length > MAX_TEXT_LENGTH ? albumNotes.slice(0, MAX_TEXT_LENGTH) : albumNotes, // Prefer content over summary if available
+                    notes: info.album?.wiki?.summary || '', // Prefer content over summary if available
                     musicBrainzId: info.album?.mbid || album.subsonic.musicBrainzId, // Keep existing if LastFM doesn't provide
                     lastFmUrl: info.album?.url,
                     smallImageUrl: info.album?.image?.find((i: Record<string, string>) => i.size === 'small')?.['#text'],
@@ -654,11 +651,9 @@ async function handleLastFMMetadata() {
                     return artistInfoFromAPI.artist?.image?.find((i: Record<string, string>) => i.size === size)?.['#text'];
                 };
 
-                const artistBiography = artistInfoFromAPI.artist.bio?.content || artistInfoFromAPI.artist.bio?.summary || '';
-
                 const artistInfoData = ArtistInfoSchema.safeParse({
                     id: artist.artist.id, // This should be the local ID, not from LastFM
-                    biography: artistBiography.length > MAX_TEXT_LENGTH ? artistBiography.slice(0, MAX_TEXT_LENGTH) : artistBiography,
+                    biography: artistInfoFromAPI.artist.bio?.summary || '',
                     musicBrainzId: artistInfoFromAPI.artist.mbid || artist.artist.musicBrainzId,
                     lastFmUrl: artistInfoFromAPI.artist.url,
                     smallImageUrl: getImage('small'),

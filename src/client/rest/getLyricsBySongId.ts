@@ -21,7 +21,7 @@ async function handlegetLyricsBySongId(c: Context) {
     if (!track) return createResponse(c, {}, 'failed', { code: 70, message: 'Song not found' });
     if (track.backend.lyrics?.length) return createResponse(c, { lyricsList: { structuredLyrics: track.backend.lyrics } }, 'ok');
 
-    const lyrics = await fetchLyrics(track.subsonic.title, track.subsonic.artist, track.subsonic.album);
+    const lyrics = await fetchLyrics(track.subsonic.title, track.subsonic.artist, track.subsonic.album, track.subsonic.duration);
     if (!lyrics) return createResponse(c, {}, 'ok');
 
     const lines = lyrics.split('\n').filter((line) => line.trim());
@@ -55,13 +55,13 @@ async function handlegetLyricsBySongId(c: Context) {
     }, 'ok');
 }
 
-async function fetchLyrics(trackName: string, artistName: string, albumName: string): Promise<string | null> {
+async function fetchLyrics(trackName: string, artistName: string, albumName: string, duration: number): Promise<string | null> {
     const artistNameGet = artistName.split(separatorsToRegex(config.artist_separators))[0];
 
     // Get in LRCLIB
     const lrclibGetUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(trackName)}&artist_name=${
         encodeURIComponent(artistNameGet)
-    }&album_name=${encodeURIComponent(albumName)}`;
+    }&album_name=${encodeURIComponent(albumName)}&duration=${encodeURIComponent(duration)}`;
 
     try {
         const lrclibGetResponse = await fetch(lrclibGetUrl);
