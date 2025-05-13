@@ -1,4 +1,4 @@
-import { Context, Hono } from 'hono';
+import { Context, Hono } from '@hono/hono';
 import Fuse from 'fuse.js';
 import { createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
 import { Album, Artist, Song, userData } from '../../zod.ts';
@@ -64,7 +64,7 @@ async function handlesearch(c: Context) {
                 keys: ['searchString'],
                 threshold: 0.3,
                 ignoreLocation: true,
-                useExtendedSearch: true,
+                useExtendedSearch: false,
             });
             results = fuse.search(query).map((r) => r.item);
         }

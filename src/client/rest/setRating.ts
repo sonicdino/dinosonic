@@ -1,4 +1,4 @@
-import { Context, Hono } from 'hono';
+import { Context, Hono } from '@hono/hono';
 import { createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
 import { Album, Artist, Song, userData, userDataSchema } from '../../zod.ts';
 
@@ -17,10 +17,8 @@ async function handlesetRating(c: Context) {
     const user = await getUserByUsername(isValidated.username);
     if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
 
-    if (id.startsWith('t')) {
-        const track = (await database.get(['tracks', id])).value as Song | null;
-        if (!track) return createResponse(c, {}, 'failed', { code: 70, message: 'Song not found' });
-
+    const track = (await database.get(['tracks', id])).value as Song | null;
+    if (track) {
         let userData = (await database.get(['userData', user.backend.id, 'track', track.subsonic.id])).value as userData | undefined;
         if (!userData) {
             userData = userDataSchema.parse({
@@ -29,10 +27,11 @@ async function handlesetRating(c: Context) {
             });
         } else userData.userRating = rating ? rating : undefined;
         await database.set(['userData', user.backend.id, 'track', track.subsonic.id], userData);
-    } else if (id.startsWith('a')) {
-        const album = (await database.get(['albums', id])).value as Album | null;
-        if (!album) return createResponse(c, {}, 'failed', { code: 70, message: 'Album not found' });
+        return createResponse(c, {}, 'ok');
+    }
 
+    const album = (await database.get(['albums', id])).value as Album | null;
+    if (album) {
         let userData = (await database.get(['userData', user.backend.id, 'album', album.subsonic.id])).value as userData | undefined;
         if (!userData) {
             userData = userDataSchema.parse({
@@ -41,10 +40,10 @@ async function handlesetRating(c: Context) {
             });
         } else userData.userRating = rating ? rating : undefined;
         await database.set(['userData', user.backend.id, 'album', album.subsonic.id], userData);
-    } else if (id.startsWith('A')) {
-        const artist = (await database.get(['artists', id])).value as Artist | null;
-        if (!artist) return createResponse(c, {}, 'failed', { code: 70, message: 'Album not found' });
-
+        return createResponse(c, {}, 'ok');
+    }
+    const artist = (await database.get(['artists', id])).value as Artist | null;
+    if (artist) {
         let userData = (await database.get(['userData', user.backend.id, 'artist', artist.artist.id])).value as userData | undefined;
         if (!userData) {
             userData = userDataSchema.parse({
@@ -52,10 +51,12 @@ async function handlesetRating(c: Context) {
                 userRating: rating ? rating : undefined,
             });
         } else userData.userRating = rating ? rating : undefined;
-        await database.set(['userData', user.backend.id, 'artist', artist.artist.id], userData);
-    } else return createResponse(c, {}, 'failed', { code: 70, message: 'Invalid id provided' });
 
-    return createResponse(c, {}, 'ok');
+        await database.set(['userData', user.backend.id, 'artist', artist.artist.id], userData);
+        return createResponse(c, {}, 'ok');
+    }
+
+    return createResponse(c, {}, 'failed', { code: 70, message: 'Invalid id provided' });
 }
 
 setRating.get('/setRating', handlesetRating);

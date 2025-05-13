@@ -1,4 +1,4 @@
-import { Context, Hono } from 'hono';
+import { Context, Hono } from '@hono/hono';
 import { createResponse, database, getUserByUsername, validateAuth } from '../../util.ts';
 import { Album, Artist, Song, userData } from '../../zod.ts';
 

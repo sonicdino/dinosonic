@@ -1,5 +1,5 @@
-import { Context, Hono } from 'hono';
-import { createResponse, database, getField, getFields, getNextId, getUserByUsername, validateAuth } from '../../util.ts';
+import { Context, Hono } from '@hono/hono';
+import { createResponse, database, generateId, getField, getFields, getUserByUsername, validateAuth } from '../../util.ts';
 import { Playlist, PlaylistSchema, Song, userData } from '../../zod.ts';
 
 const createPlaylist = new Hono();
@@ -73,7 +73,7 @@ async function handleCreatePlaylist(c: Context) {
     // Create new playlist or update existing one
     if (!isUpdate) {
         // Generate a new ID for the playlist
-        const newPlaylistId = await getNextId('p');
+        const newPlaylistId = await generateId();
 
         playlist = PlaylistSchema.parse({
             id: newPlaylistId,

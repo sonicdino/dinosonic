@@ -1,6 +1,6 @@
-import { MiddlewareHandler } from 'hono';
-import { deleteCookie, getCookies } from 'cookies';
-import { create, verify } from 'djwt';
+import { MiddlewareHandler } from '@hono/hono';
+import { deleteCookie, getCookies } from '@std/http/cookie';
+import { create, verify } from '@zaubrik/djwt';
 import { database } from '../util.ts';
 import { SubsonicUser } from '../zod.ts';
 

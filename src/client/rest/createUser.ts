@@ -1,5 +1,5 @@
-import { Context, Hono } from 'hono';
-import { createResponse, database, encryptForTokenAuth, getField, getNextId, getUserByUsername, hexToString, validateAuth } from '../../util.ts';
+import { Context, Hono } from '@hono/hono';
+import { createResponse, database, encryptForTokenAuth, generateId, getField, getUserByUsername, hexToString, validateAuth } from '../../util.ts';
 import { UserSchema } from '../../zod.ts';
 
 const createUser = new Hono();
@@ -37,7 +37,7 @@ async function handlecreateUser(c: Context) {
     password = await encryptForTokenAuth(password);
 
     const User = UserSchema.parse({
-        backend: { id: await getNextId('u'), username: username.toLowerCase(), password },
+        backend: { id: await generateId(), username: username.toLowerCase(), password },
         subsonic: {
             username,
             email,

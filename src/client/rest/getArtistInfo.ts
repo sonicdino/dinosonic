@@ -1,4 +1,4 @@
-import { Context, Hono } from 'hono';
+import { Context, Hono } from '@hono/hono';
 import { createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
 import { Album, Artist, ArtistID3, Song, userData } from '../../zod.ts';
 import { getArtistIDByName } from '../../MediaScanner.ts';
@@ -9,14 +9,13 @@ async function handlegetArtistInfo(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
 
-    let id = await getField(c, 'id') || '';
+    const id = await getField(c, 'id') || '';
     const _count = parseInt(await getField(c, 'count') || '20');
     const includeNotPresent = await getField(c, 'includeNotPresent');
 
     if (includeNotPresent === 'true') return createResponse(c, {}, 'failed', { code: 0, message: "Parameter 'includeNotPresent' not implemented" });
     if (!id) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });
-    if (id.startsWith('a') || id.startsWith('t')) id = await getArtistIDByAlbumOrSongID(id);
-    const artist = (await database.get(['artists', id])).value as Artist | undefined;
+    const artist = (await database.get(['artists', await getArtistIDByAlbumOrSongID(id)])).value as Artist | undefined;
     if (!artist) return createResponse(c, {}, 'failed', { code: 70, message: 'Artist not found' });
     if (!artist.artistInfo) return createResponse(c, {}, 'ok');
     const similarArtist: ArtistID3[] = [];
@@ -49,11 +48,8 @@ async function handlegetArtistInfo(c: Context) {
 }
 
 async function getArtistIDByAlbumOrSongID(id: string) {
-    if (id.startsWith('a')) {
-        const album = (await database.get(['albums', id])).value as Album | null;
-        if (!album) return '';
-        return album.subsonic.artists[0].id;
-    }
+    const album = (await database.get(['albums', id])).value as Album | null;
+    if (album) return album.subsonic.artists[0].id;
 
     const track = (await database.get(['tracks', id])).value as Song | null;
     if (!track) return '';

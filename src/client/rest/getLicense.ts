@@ -1,4 +1,4 @@
-import { Context, Hono } from 'hono';
+import { Context, Hono } from '@hono/hono';
 import { createResponse, validateAuth } from '../../util.ts';
 
 const getLicense = new Hono();

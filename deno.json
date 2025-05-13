@@ -18,23 +18,20 @@
         "singleQuote": true
     },
     "imports": {
-        "walk": "https://deno.land/std/fs/walk.ts",
-        "djwt": "https://deno.land/x/djwt/mod.ts",
-        "parse-args": "jsr:@std/cli/parse-args",
-        "zod": "https://deno.land/x/zod/mod.ts",
-        "music-metadata": "npm:music-metadata",
+        "@hono/hono": "jsr:@hono/hono@^4.7.8",
+        "@libs/xml": "jsr:@libs/xml@^6.0.4",
+        "@std/cli": "jsr:@std/cli@^1.0.17",
+        "@std/encoding": "jsr:@std/encoding@^1.0.10",
+        "@std/fmt": "jsr:@std/fmt@^1.0.7",
+        "@std/fs": "jsr:@std/fs@^1.0.17",
+        "@std/http": "jsr:@std/http@^1.0.15",
+        "@std/log": "jsr:@std/log@^0.224.14",
+        "@std/path": "jsr:@std/path@^1.0.9",
+        "@std/toml": "jsr:@std/toml@^1.0.5",
+        "@takker/md5": "jsr:@takker/md5@^0.1.0",
+        "@zaubrik/djwt": "jsr:@zaubrik/djwt@^3.0.2",
+        "music-metadata": "npm:music-metadata@^11.2.1",
         "fuse.js": "https://esm.sh/fuse.js",
-        "hono-cors": "jsr:@hono/hono/cors",
-        "hono-deno": "jsr:@hono/hono/deno",
-        "cookies": "jsr:@std/http/cookie",
-        "colors": "jsr:@std/fmt/colors",
-        "hex": "jsr:@std/encoding/hex",
-        "hono": "jsr:@hono/hono",
-        "md5": "jsr:@takker/md5",
-        "path": "jsr:@std/path",
-        "toml": "jsr:@std/toml",
-        "xml": "jsr:@libs/xml",
-        "fuzzy": "npm:fuzzy",
-        "log": "jsr:@std/log"
+        "zod": "npm:zod@^3.24.3"
     }
 }

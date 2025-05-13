@@ -1,4 +1,4 @@
-import { Context, Hono } from 'hono';
+import { Context, Hono } from '@hono/hono';
 import { createResponse, database, encryptForTokenAuth, getField, getUserByUsername, hexToString, validateAuth } from '../../util.ts';
 import { UserSchema } from '../../zod.ts';
 

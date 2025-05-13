@@ -1,14 +1,14 @@
-import { stringify } from 'xml';
-import { md5 } from 'md5';
-import { encodeHex } from 'hex';
-import { Context } from 'hono';
+import { stringify } from '@libs/xml';
+import { md5 } from '@takker/md5';
+import { encodeHex } from '@std/encoding';
+import { Context } from '@hono/hono';
 import { type Config, Playlist, type SubsonicUser, type User, UserSchema } from './zod.ts';
-import * as log from 'log';
-import { blue, bold, gray, red, yellow } from 'colors';
+import * as log from '@std/log';
+import { blue, bold, gray, red, yellow } from '@std/fmt/colors';
 
 const SERVER_NAME = 'Dinosonic';
 const API_VERSION = '1.16.1';
-export const SERVER_VERSION = '0.0.26';
+export const SERVER_VERSION = '0.1.0';
 export let database: Deno.Kv;
 export let config: Config;
 export let logger = log.getLogger();
@@ -106,12 +106,20 @@ export async function checkInternetConnection() {
     }
 }
 
-export async function getNextId(type: 't' | 'a' | 'A' | 'p' | 'u'): Promise<string> {
-    const idKey = ['counters', type];
-    const lastId = (await database.get(idKey)).value as number || 0;
-    const newId = lastId + 1;
-    await database.set(idKey, newId);
-    return `${type}${newId}`;
+export async function generateId(): Promise<string> {
+    const randomBytes = new Uint8Array(32);
+    crypto.getRandomValues(randomBytes);
+
+    // Hash the random bytes with SHA-256
+    const hashBuffer = await crypto.subtle.digest('SHA-256', randomBytes);
+    const hashHex = Array.from(new Uint8Array(hashBuffer))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+
+    // Pick a random start position and take 30 characters
+    const maxStart = hashHex.length - 30;
+    const start = Math.floor(Math.random() * (maxStart + 1));
+    return hashHex.slice(start, start + 30);
 }
 
 export function setConstants(Database: Deno.Kv, Config: Config) {

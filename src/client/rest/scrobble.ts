@@ -1,6 +1,7 @@
-import { Context, Hono } from 'hono';
-import { checkInternetConnection, config, createResponse, database, getField, getUserByUsername, signParams, validateAuth } from '../../util.ts';
+import { Context, Hono } from '@hono/hono';
+import { checkInternetConnection, createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
 import { nowPlaying, Song, userData, userDataSchema } from '../../zod.ts';
+import { scrobble as LastFMScrobble } from '../../LastFM.ts';
 
 const scrobble = new Hono();
 
@@ -71,40 +72,9 @@ async function handleScrobble(c: Context) {
 
     const internetAccess = await checkInternetConnection();
 
-    // **LastFM Scrobbling**
-    if (internetAccess && config.last_fm?.enable_scrobbling && config.last_fm.api_key && config.last_fm.api_secret) {
-        if (user?.backend.lastFMSessionKey) {
-            const sig = new URLSearchParams({
-                method: submission ? 'track.scrobble' : 'track.updateNowPlaying',
-                api_key: config.last_fm.api_key,
-                sk: user.backend.lastFMSessionKey,
-                artist: track.subsonic.artist,
-                track: track.subsonic.title,
-                album: track.subsonic.album,
-                timestamp: Math.floor(time.getTime() / 1000).toString(),
-                format: 'json',
-            });
-
-            // Append API signature
-            sig.append('api_sig', signParams(sig, config.last_fm.api_secret));
-
-            try {
-                const response = await fetch('https://ws.audioscrobbler.com/2.0/', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: sig,
-                });
-
-                const data = await response.json();
-                if (!response.ok || data.error) {
-                    console.error(`Last.fm Scrobble Error:`, data);
-                    return createResponse(c, {}, 'failed', { code: 60, message: 'Last.fm Scrobble Error' });
-                }
-            } catch (err) {
-                console.error(`Last.fm API Request Failed:`, err);
-                return createResponse(c, {}, 'failed', { code: 61, message: 'Failed to connect to Last.fm' });
-            }
-        }
+    if (internetAccess) {
+        await LastFMScrobble(user, submission, time, track);
+        // TODO: ListenBrainz Scrobbling
     }
 
     return createResponse(c, {}, 'ok');

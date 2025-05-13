@@ -1,14 +1,14 @@
 import { Config, ConfigSchema, nowPlaying } from './zod.ts';
 import { scanMediaDirectories } from './MediaScanner.ts';
-import { parseArgs } from 'parse-args';
-import { encryptForTokenAuth, getNextId, logger, parseTimeToMs, SERVER_VERSION, setConstants, setupLogger } from './util.ts';
+import { parseArgs } from '@std/cli';
+import { encryptForTokenAuth, generateId, logger, parseTimeToMs, SERVER_VERSION, setConstants, setupLogger } from './util.ts';
 import restRoutes from './client/rest/index.ts';
 import apiRoutes from './client/api/index.ts';
-import { Context, Hono, Next } from 'hono';
-import { cors } from 'hono-cors';
-import { serveStatic } from 'hono-deno';
-import { parse } from 'toml';
-import * as path from 'path';
+import { Context, Hono, Next } from '@hono/hono';
+import { cors } from '@hono/hono/cors';
+import { serveStatic } from '@hono/hono/deno';
+import { parse } from '@std/toml';
+import * as path from '@std/path';
 import { authMiddleware } from './client/middleware.ts';
 let configFile = Deno.env.get('DINO_CONFIG_FILE');
 let config = null;
@@ -141,7 +141,7 @@ if (!(await database.get(['users', 'u1'])).value) {
 
     await database.set(['users', 'u1'], {
         backend: {
-            id: await getNextId('u'),
+            id: await generateId(),
             username: 'admin',
             password: await encryptForTokenAuth(config.default_admin_password),
         },

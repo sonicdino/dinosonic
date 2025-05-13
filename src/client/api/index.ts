@@ -1,17 +1,17 @@
-import { Context, Hono } from 'hono';
+import { Context, Hono } from '@hono/hono';
 import {
     config,
     database,
     decryptForTokenAuth,
     deleteUserReferences,
     encryptForTokenAuth,
-    getNextId,
+    generateId,
     getSessionKey,
     getUserByUsername,
     SERVER_VERSION,
 } from '../../util.ts';
 import { generateJWT } from '../middleware.ts';
-import { deleteCookie, setCookie } from 'cookies';
+import { deleteCookie, setCookie } from '@std/http/cookie';
 import { SubsonicUser, User, UserSchema } from '../../zod.ts';
 import { hardReset } from '../../MediaScanner.ts';
 const api = new Hono();
@@ -76,7 +76,7 @@ api.post('/users', async (c: Context) => {
 
     const newUser: User = {
         backend: {
-            id: await getNextId('u'),
+            id: await generateId(),
             username: username.toLowerCase(),
             password,
         },

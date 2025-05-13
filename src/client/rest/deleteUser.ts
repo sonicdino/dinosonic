@@ -1,4 +1,4 @@
-import { Context, Hono } from 'hono';
+import { Context, Hono } from '@hono/hono';
 import { createResponse, deleteUserReferences, getField, getUserByUsername, validateAuth } from '../../util.ts';
 
 const deleteUser = new Hono();

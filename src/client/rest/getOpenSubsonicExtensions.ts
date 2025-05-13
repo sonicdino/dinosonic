@@ -1,4 +1,4 @@
-import { Context, Hono } from 'hono';
+import { Context, Hono } from '@hono/hono';
 import { createResponse } from '../../util.ts';
 
 const getOpenSubsonicExtensions = new Hono();

@@ -2,10 +2,14 @@ import { z } from 'zod';
 
 export const userDataSchema = z.object({
     id: z.string(),
-    starred: z.date().optional(),
+    starred: z.date().optional().nullable(),
+    unstarred: z.date().optional().nullable(),
     played: z.date().optional(),
     playCount: z.number().optional(),
     userRating: z.number().optional(),
+}).refine((data) => !(data.starred && data.unstarred && data.starred.getTime() === data.unstarred.getTime()), {
+    // Optional refinement: prevent starred and unstarred being exactly the same time
+    message: 'Starred and Unstarred timestamps cannot be identical',
 });
 
 export const CoverArtSchema = z.object({

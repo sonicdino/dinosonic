@@ -1,7 +1,7 @@
-import { Context, Hono } from 'hono';
+import { Context, Hono } from '@hono/hono';
 import { config, createResponse, database, exists, getField, logger, validateAuth } from '../../util.ts';
 import { CoverArt } from '../../zod.ts';
-import * as path from 'path';
+import * as path from '@std/path';
 
 const getCoverArt = new Hono();
 const mimeToExt: Record<string, string> = {

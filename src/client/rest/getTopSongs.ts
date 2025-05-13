@@ -1,4 +1,4 @@
-import { Context, Hono } from 'hono';
+import { Context, Hono } from '@hono/hono';
 import { checkInternetConnection, config, createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
 import { Artist, Song, SongID3, userData } from '../../zod.ts';
 import { getArtistIDByName } from '../../MediaScanner.ts';
@@ -22,7 +22,7 @@ async function handlegetTopSongs(c: Context) {
     if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
 
     if (await checkInternetConnection() && config.last_fm?.enabled && config.last_fm.api_key) {
-        const lastFmTopSongs = await getTopTracks(artist.artist.name, config.last_fm?.api_key, count, artist.artist.musicBrainzId);
+        const lastFmTopSongs = await getTopTracks(artist.artist.name, count, artist.artist.musicBrainzId);
 
         for await (const entry of database.list({ prefix: ['tracks'] })) {
             const track = entry.value as Song;
