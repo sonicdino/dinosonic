@@ -52,8 +52,9 @@ async function getArtistIDByAlbumOrSongID(id: string) {
     if (album) return album.subsonic.artists[0].id;
 
     const track = (await database.get(['tracks', id])).value as Song | null;
-    if (!track) return '';
-    return track.subsonic.artists[0].id;
+    if (track) return track.subsonic.artists[0].id;
+
+    return id;
 }
 
 getArtistInfo.get('/getArtistInfo', handlegetArtistInfo);

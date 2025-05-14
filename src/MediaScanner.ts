@@ -319,7 +319,19 @@ async function handleCoverArt(id: string, pictures?: IPicture[], trackPath?: str
 
     let newCoverArt: CoverArt | undefined;
 
-    if (url) {
+    if (pictures && pictures.length > 0) {
+        // Prefer 'Cover (front)' then any other cover type
+        const cover = pictures.find((pic) => pic.type?.toLowerCase().includes('cover (front)')) ||
+            pictures.find((pic) => pic.type?.toLowerCase().startsWith('cover'));
+        if (cover) {
+            const coversDirExists = await exists(coversDir);
+            if (!coversDirExists) await Deno.mkdir(coversDir, { recursive: true });
+            const ext = mimeToExt[cover.format.toLowerCase()] || 'jpg'; // Ensure format is lowercased
+            const filePath = path.join(coversDir, `${id}.${ext}`);
+            await Deno.writeFile(filePath, cover.data);
+            newCoverArt = { id, mimeType: cover.format, path: filePath };
+        }
+    } else if (url) {
         try {
             const response = await fetch(url);
             if (!response.ok) return;
@@ -351,18 +363,6 @@ async function handleCoverArt(id: string, pictures?: IPicture[], trackPath?: str
                 };
                 break;
             }
-        }
-    } else if (pictures && pictures.length > 0) {
-        // Prefer 'Cover (front)' then any other cover type
-        const cover = pictures.find((pic) => pic.type?.toLowerCase().includes('cover (front)')) ||
-            pictures.find((pic) => pic.type?.toLowerCase().startsWith('cover'));
-        if (cover) {
-            const coversDirExists = await exists(coversDir);
-            if (!coversDirExists) await Deno.mkdir(coversDir, { recursive: true });
-            const ext = mimeToExt[cover.format.toLowerCase()] || 'jpg'; // Ensure format is lowercased
-            const filePath = path.join(coversDir, `${id}.${ext}`);
-            await Deno.writeFile(filePath, cover.data);
-            newCoverArt = { id, mimeType: cover.format, path: filePath };
         }
     }
 
@@ -590,9 +590,9 @@ async function handleLastFMMetadata() {
                     notes: info.album?.wiki?.summary || '', // Prefer content over summary if available
                     musicBrainzId: info.album?.mbid || album.subsonic.musicBrainzId, // Keep existing if LastFM doesn't provide
                     lastFmUrl: info.album?.url,
-                    smallImageUrl: info.album?.image?.find((i: Record<string, string>) => i.size === 'small')?.['#text'],
-                    mediumImageUrl: info.album?.image?.find((i: Record<string, string>) => i.size === 'medium')?.['#text'],
-                    largeImageUrl: info.album?.image?.find((i: Record<string, string>) => i.size === 'extralarge' || i.size === 'large')?.['#text'], // Prefer extralarge
+                    // smallImageUrl: info.album?.image?.find((i: Record<string, string>) => i.size === 'small')?.['#text'],
+                    // mediumImageUrl: info.album?.image?.find((i: Record<string, string>) => i.size === 'medium')?.['#text'],
+                    // largeImageUrl: info.album?.image?.find((i: Record<string, string>) => i.size === 'extralarge' || i.size === 'large')?.['#text'], // Prefer extralarge
                 });
 
                 if (albumInfoParse.success) {
