@@ -11,11 +11,11 @@ async function handlesearch(c: Context) {
 
     const query = (await getField(c, 'query') || '').replace(/[`'"]/g, '').trim();
     const artistCount = parseInt(await getField(c, 'artistCount') || '20');
-    let artistOffset = parseInt(await getField(c, 'artistOffset') || '0');
+    const artistOffset = parseInt(await getField(c, 'artistOffset') || '0');
     const albumCount = parseInt(await getField(c, 'albumCount') || '20');
-    let albumOffset = parseInt(await getField(c, 'albumOffset') || '0');
+    const albumOffset = parseInt(await getField(c, 'albumOffset') || '0');
     const songCount = parseInt(await getField(c, 'songCount') || '20');
-    let songOffset = parseInt(await getField(c, 'songOffset') || '0');
+    const songOffset = parseInt(await getField(c, 'songOffset') || '0');
     // const musicFolderId = await getField(c, "musicFolderId") || "";
 
     const user = await getUserByUsername(isValidated.username);
@@ -26,8 +26,8 @@ async function handlesearch(c: Context) {
     const song = [];
 
     if (artistCount) {
-        const maxOffset = (await database.get(['counters', 'A'])).value as number;
-        artistOffset = Math.min(artistOffset, maxOffset);
+        // const maxOffset = (await database.get(['counters', 'A'])).value as number;
+        // artistOffset = Math.min(artistOffset, maxOffset);
         const Artists = await Array.fromAsync(database.list({ prefix: ['artists'] }));
         const fuse = new Fuse(Artists, { keys: ['value.artist.name'], threshold: 0.3, ignoreLocation: true, useExtendedSearch: true });
         const results = query.length ? fuse.search(query).map((r) => r.item) : Artists;
@@ -49,8 +49,8 @@ async function handlesearch(c: Context) {
     }
 
     if (albumCount) {
-        const maxOffset = (await database.get(['counters', 'a'])).value as number;
-        albumOffset = Math.min(albumOffset, maxOffset);
+        // const maxOffset = (await database.get(['counters', 'a'])).value as number;
+        // albumOffset = Math.min(albumOffset, maxOffset);
         const Albums = await Array.fromAsync(database.list({ prefix: ['albums'] }));
         let results = Albums;
 
@@ -89,8 +89,8 @@ async function handlesearch(c: Context) {
     }
 
     if (songCount) {
-        const maxOffset = (await database.get(['counters', 't'])).value as number;
-        songOffset = Math.min(songOffset, maxOffset);
+        // const maxOffset = (await database.get(['counters', 't'])).value as number;
+        // songOffset = Math.min(songOffset, maxOffset);
         const Songs = await Array.fromAsync(database.list({ prefix: ['tracks'] }));
         let results = Songs;
 

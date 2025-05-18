@@ -74,6 +74,8 @@ async function handleStream(c: Context) {
     const ffmpegArgs = [
         '-i',
         track.subsonic.path,
+        '-map_metadata',
+        '-1', // Strip all metadata from output
         '-ss',
         timeOffset.toString(), // Seek position
         '-map',

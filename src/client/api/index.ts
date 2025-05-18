@@ -8,17 +8,391 @@ import {
     generateId,
     getSessionKey,
     getUserByUsername,
+    logger,
     SERVER_VERSION,
 } from '../../util.ts';
 import { generateJWT } from '../middleware.ts';
 import { deleteCookie, setCookie } from '@std/http/cookie';
-import { SubsonicUser, User, UserSchema } from '../../zod.ts';
+import {
+    Album,
+    AlbumSchema,
+    CoverArtSchema,
+    Playlist,
+    PlaylistSchema,
+    ShareSchema,
+    Song,
+    SongSchema,
+    SubsonicUser,
+    User,
+    UserSchema,
+} from '../../zod.ts';
 import { hardReset } from '../../MediaScanner.ts';
+import path from 'node:path';
+import { ensureDir } from '@std/fs/ensure-dir';
+import { exists } from '@std/fs/exists';
 const api = new Hono();
 
-// Stats maybe
+api.get('/public-stream/:shareId/:itemId', async (c: Context) => {
+    const { shareId, itemId } = c.req.param();
+
+    // 1. Validate Share
+    const shareEntry = await database.get(['shares', shareId]);
+    if (!shareEntry.value) {
+        logger.warn(`Public stream attempt: Share ID ${shareId} not found.`);
+        return c.text('Invalid or expired share link for streaming.', 404);
+    }
+    const shareParseResult = ShareSchema.safeParse(shareEntry.value);
+    if (!shareParseResult.success) {
+        logger.error(`Public stream attempt: Malformed share data for ${shareId}.`);
+        return c.text('Share data corrupted.', 500);
+    }
+    const share = shareParseResult.data;
+
+    if (share.expires && new Date(share.expires) < new Date()) {
+        logger.info(`Public stream attempt: Share ID ${shareId} has expired.`);
+        // Optionally delete expired share: await database.delete(['shares', shareId]);
+        return c.text('Share link has expired.', 410); // 410 Gone
+    }
+
+    // 2. Validate itemId against the share content
+    let isValidItemForShare = false;
+    switch (share.itemType) {
+        case 'song':
+            if (share.itemId === itemId) {
+                isValidItemForShare = true;
+            }
+            break;
+        case 'album': {
+            const albumEntry = await database.get(['albums', share.itemId]);
+            if (albumEntry.value) {
+                const album = AlbumSchema.parse(albumEntry.value);
+                // deno-lint-ignore no-explicit-any
+                if (album.subsonic.song.some((songIdOrObj: any) => (typeof songIdOrObj === 'string' ? songIdOrObj : songIdOrObj.id) === itemId)) {
+                    isValidItemForShare = true;
+                }
+            }
+            break;
+        }
+        case 'playlist': {
+            const playlistEntry = await database.get(['playlists', share.itemId]);
+            if (playlistEntry.value) {
+                const playlist = PlaylistSchema.parse(playlistEntry.value);
+                // deno-lint-ignore no-explicit-any
+                if (playlist.entry.some((songIdOrObj: any) => (typeof songIdOrObj === 'string' ? songIdOrObj : songIdOrObj.id) === itemId)) {
+                    isValidItemForShare = true;
+                }
+            }
+            break;
+        }
+        default:
+            // 'coverArt' shares don't stream audio. Other types not supported for streaming.
+            logger.warn(`Public stream attempt: Share ${shareId} is for ${share.itemType}, not streamable audio.`);
+            return c.text('This shared item is not streamable audio.', 400);
+    }
+
+    if (!isValidItemForShare) {
+        logger.warn(`Public stream attempt: Item ID ${itemId} is not part of share ${shareId} (type: ${share.itemType}).`);
+        return c.text('Requested item not part of this share.', 403); // Forbidden
+    }
+
+    // 3. Fetch and Stream the Track (if validated)
+    const trackEntry = await database.get(['tracks', itemId]);
+    if (!trackEntry.value) {
+        logger.error(`Public stream: Validated item ID ${itemId} (for share ${shareId}) not found in tracks DB.`);
+        return c.text('Track data not found.', 404); // Should be rare if validation passed
+    }
+    const parsedTrack = SongSchema.safeParse(trackEntry.value);
+    if (!parsedTrack.success) {
+        logger.error(`Public stream: Malformed track data for validated ID ${itemId}.`);
+        return c.text('Track data corrupted.', 500);
+    }
+    const track = parsedTrack.data;
+
+    const originalFilePath = track.subsonic.path;
+    if (!(await exists(originalFilePath))) {
+        logger.error(`Original track file not found for validated ID ${itemId} at ${originalFilePath}.`);
+        return c.text('Original track file missing.', 404);
+    }
+
+    // Transcoding or direct serving logic (same as your previous version of /api/public-stream/:itemId)
+    const transcodingEnabled = config.transcoding?.enabled === true;
+    const ffmpegPath = config.transcoding?.ffmpeg_path;
+
+    if (transcodingEnabled && ffmpegPath) {
+        logger.debug(`Secure public stream for share ${shareId}, item ${itemId}: Transcoding to Opus.`);
+        const lowQualityOpusBitrate = '64k';
+        const format = 'opus';
+        const contentType = 'audio/opus';
+        const ffmpegArgs = [
+            /* ... Opus args from previous response, including -map_metadata -1 ... */
+            '-i',
+            originalFilePath,
+            '-map_metadata',
+            '-1',
+            '-map',
+            '0:a',
+            '-c:a',
+            'libopus',
+            '-b:a',
+            lowQualityOpusBitrate,
+            '-vbr',
+            'on',
+            '-f',
+            format,
+            '-vn',
+            '-nostdin',
+            'pipe:1',
+        ];
+        try {
+            const command = new Deno.Command(ffmpegPath, { args: ffmpegArgs, stdout: 'piped', stderr: 'piped' });
+            const process = command.spawn();
+            c.header('Content-Type', contentType);
+            c.header('Accept-Ranges', 'none');
+            c.header('Cache-Control', 'public, max-age=3600');
+            (async () => {/* ... stderr logging ... */})();
+            return c.body(process.stdout);
+            // deno-lint-ignore no-explicit-any
+        } catch (error: any) {
+            logger.error(`Error starting FFmpeg for secure public Opus stream (share ${shareId}, item ${itemId}): ${error.message}. Falling back.`);
+        }
+    }
+
+    // Fallback: Serve original file
+    logger.debug(`Secure public stream for share ${shareId}, item ${itemId}: Serving original.`);
+    try {
+        const file = await Deno.open(originalFilePath, { read: true });
+        const { size } = await file.stat();
+        // ... (Range request and file streaming logic as before) ...
+        const rangeHeader = c.req.header('Range');
+        let start = 0;
+        let end = size - 1;
+
+        if (rangeHeader) {
+            const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+            if (match) {
+                start = parseInt(match[1], 10);
+                end = match[2] ? parseInt(match[2], 10) : end;
+            }
+        }
+        const contentLength = end - start + 1;
+
+        c.header('Accept-Ranges', 'bytes');
+        c.header('Content-Type', track.subsonic.contentType || 'audio/mpeg');
+        c.header('Content-Length', `${contentLength}`);
+        c.header('Cache-Control', 'public, max-age=86400');
+
+        if (rangeHeader) {
+            c.status(206);
+            c.header('Content-Range', `bytes ${start}-${end}/${size}`);
+        } else c.status(200);
+
+        await file.seek(start, Deno.SeekMode.Start);
+        const readable = new ReadableStream({
+            async pull(controller) {
+                const buffer = new Uint8Array(64 * 1024);
+                const bytesRead = await file.read(buffer);
+                if (bytesRead === null || bytesRead === 0) {
+                    controller.close();
+                    file.close();
+                } else {
+                    controller.enqueue(buffer.subarray(0, bytesRead));
+                }
+            },
+            cancel() {
+                file.close();
+            },
+        });
+        return c.body(readable);
+
+        // deno-lint-ignore no-explicit-any
+    } catch (error: any) {
+        logger.error(`Error streaming original (fallback) for secure public stream (share ${shareId}, item ${itemId}): ${error.message}`);
+        return c.text('Error streaming file', 500);
+    }
+});
+
+// Public Cover Art Endpoint
+const mimeToExtPublic: Record<string, string> = { // To avoid conflict if util.ts has a similar map
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/png': 'png',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+    'image/bmp': 'bmp',
+    'image/svg+xml': 'svg',
+};
+
+api.get('/public-cover/:itemId', async (c: Context) => {
+    const { itemId } = c.req.param();
+    const sizeParam = c.req.query('size');
+    const size = sizeParam ? parseInt(sizeParam, 10) : 0;
+
+    const coverEntry = await database.get(['covers', itemId]);
+    if (!coverEntry.value) {
+        return c.text('Cover not found', 404);
+    }
+    const parsedCover = CoverArtSchema.safeParse(coverEntry.value);
+    if (!parsedCover.success) {
+        logger.error(`Malformed public cover art data in DB for ID ${itemId}`);
+        return c.text('Cover data corrupted', 500);
+    }
+    const cover = parsedCover.data;
+
+    if (!(await exists(cover.path))) { // Use aliased fsExists
+        logger.error(`Original public cover file not found at path: ${cover.path} for ID ${itemId}`);
+        return c.text('Original cover file missing', 404);
+    }
+
+    c.header('Cache-Control', 'public, max-age=86400');
+
+    if (!size || !config.transcoding?.enabled || !config.transcoding.ffmpeg_path) {
+        try {
+            const fileData = await Deno.readFile(cover.path);
+            c.header('Content-Type', cover.mimeType);
+            return c.body(fileData);
+        } catch (e) {
+            logger.error(`Error reading original public cover ${itemId}: ${e}`);
+            return c.text('Error serving original cover', 500);
+        }
+    }
+
+    const cachePublicCoversDir = path.join(config.data_folder, 'cache', 'public_covers');
+    await ensureDir(cachePublicCoversDir); // Use ensureDir
+
+    const ext = mimeToExtPublic[cover.mimeType.toLowerCase()] || 'jpg';
+    const cachedCoverPath = path.join(cachePublicCoversDir, `${itemId}_${size}.${ext}`);
+
+    if (await exists(cachedCoverPath)) { // Use aliased fsExists
+        try {
+            const fileData = await Deno.readFile(cachedCoverPath);
+            c.header('Content-Type', cover.mimeType);
+            return c.body(fileData);
+        } catch (e) {
+            logger.warn(`Error reading cached public cover ${cachedCoverPath}, will attempt to regenerate: ${e}`);
+        }
+    }
+
+    const ffmpegPath = config.transcoding?.ffmpeg_path;
+    if (!ffmpegPath) {
+        logger.error(`FFmpeg path not configured for public cover ID ${itemId}. Falling back.`);
+        const fileData = await Deno.readFile(cover.path);
+        c.header('Content-Type', cover.mimeType);
+        return c.body(fileData);
+    }
+
+    logger.debug(`Resizing public cover for ID ${itemId} to size ${size}, output: ${cachedCoverPath}`);
+    const process = new Deno.Command(ffmpegPath, {
+        args: ['-i', cover.path, '-vf', `scale=${size}:${size}`, '-y', cachedCoverPath],
+        stdout: 'piped',
+        stderr: 'piped',
+    });
+    try {
+        const { success, stderr } = await process.output();
+        if (!success) {
+            const errorMsg = new TextDecoder().decode(stderr);
+            logger.error(`Public Cover FFmpeg failed for ${itemId} (size ${size}): ${errorMsg}. Falling back.`);
+            const fileData = await Deno.readFile(cover.path);
+            c.header('Content-Type', cover.mimeType);
+            return c.body(fileData);
+        }
+
+        if (!(await exists(cachedCoverPath))) {
+            logger.error(`FFmpeg success for public cover ${itemId} (size ${size}) but ${cachedCoverPath} not found. Falling back.`);
+            const fileData = await Deno.readFile(cover.path);
+            c.header('Content-Type', cover.mimeType);
+            return c.body(fileData);
+        }
+
+        const resizedFileData = await Deno.readFile(cachedCoverPath);
+        c.header('Content-Type', cover.mimeType);
+        return c.body(resizedFileData);
+        // deno-lint-ignore no-explicit-any
+    } catch (error: any) {
+        logger.error(`Error processing public cover ${itemId} (size ${size}): ${error.message}. Falling back.`);
+        const fileData = await Deno.readFile(cover.path);
+        c.header('Content-Type', cover.mimeType);
+        return c.body(fileData);
+    }
+});
+
+// --- Existing API Endpoints ---
 api.get('/version', (c: Context) => {
     return c.json({ version: SERVER_VERSION });
+});
+
+api.get('/public-share-details/:shareId', async (c: Context) => {
+    const { shareId } = c.req.param();
+    const shareEntry = await database.get(['shares', shareId]);
+
+    if (!shareEntry.value) {
+        return c.json({ error: 'Share not found' }, 404);
+    }
+    const share = ShareSchema.parse(shareEntry.value);
+
+    if (share.expires && new Date(share.expires) < new Date()) {
+        await database.delete(['shares', shareId]);
+        return c.json({ error: 'Share has expired' }, 410);
+    }
+    share.viewCount = (share.viewCount || 0) + 1;
+    share.lastViewed = new Date();
+    await database.set(['shares', shareId], share);
+
+    let itemData: unknown = null;
+    let ownerUsername = 'Unknown';
+    const ownerEntry = await database.get(['users', share.userId]);
+    if (ownerEntry.value) {
+        ownerUsername = (UserSchema.parse(ownerEntry.value) as User).subsonic.username;
+    }
+
+    switch (share.itemType) {
+        case 'song': {
+            const songVal = (await database.get(['tracks', share.itemId])).value;
+            if (songVal) itemData = (SongSchema.parse(songVal) as Song).subsonic;
+            break;
+        }
+
+        case 'album': {
+            const albumVal = (await database.get(['albums', share.itemId])).value;
+            if (albumVal) {
+                const albumData = AlbumSchema.parse(albumVal) as Album;
+                const songs = [];
+                for (const songId of albumData.subsonic.song) {
+                    const sVal = (await database.get(['tracks', songId as string])).value;
+                    if (sVal) songs.push((SongSchema.parse(sVal) as Song).subsonic);
+                }
+                albumData.subsonic.song = songs.sort((a, b) => (a.track || 0) - (b.track || 0));
+                itemData = albumData.subsonic;
+            }
+            break;
+        }
+        case 'playlist': {
+            const plVal = (await database.get(['playlists', share.itemId])).value;
+            if (plVal) {
+                const plData = PlaylistSchema.parse(plVal) as Playlist;
+                const songs = [];
+                for (const songId of plData.entry) {
+                    const sVal = (await database.get(['tracks', songId as string])).value;
+                    if (sVal) songs.push((SongSchema.parse(sVal) as Song).subsonic);
+                }
+                plData.entry = songs;
+                itemData = plData;
+            }
+            break;
+        }
+        case 'coverArt': { // CoverArt itself is the item data
+            const coverVal = (await database.get(['covers', share.itemId])).value;
+            if (coverVal) itemData = CoverArtSchema.parse(coverVal);
+            break;
+        }
+        default:
+            logger.error(`Invalid share item type: ${share.itemType} for share ${shareId}`);
+            return c.json({ error: 'Invalid share item type' }, 500);
+    }
+    if (!itemData) {
+        logger.warn(`Shared item ${share.itemId} (type ${share.itemType}) for share ${shareId} not found in DB.`);
+        return c.json({ error: 'Shared item data not found' }, 404);
+    }
+    return c.json({ share, item: itemData, ownerUsername });
 });
 
 api.get('/status', async (c: Context) => {

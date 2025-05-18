@@ -2,13 +2,13 @@ import { stringify } from '@libs/xml';
 import { md5 } from '@takker/md5';
 import { encodeHex } from '@std/encoding';
 import { Context } from '@hono/hono';
-import { type Config, Playlist, type SubsonicUser, type User, UserSchema } from './zod.ts';
+import { type Config, Playlist, Share, type SubsonicUser, type User, UserSchema } from './zod.ts';
 import * as log from '@std/log';
 import { blue, bold, gray, red, yellow } from '@std/fmt/colors';
 
 const SERVER_NAME = 'Dinosonic';
 const API_VERSION = '1.16.1';
-export const SERVER_VERSION = '0.1.3';
+export const SERVER_VERSION = '0.1.5';
 export let database: Deno.Kv;
 export let config: Config;
 export let logger = log.getLogger();
@@ -158,20 +158,6 @@ export async function getField(c: Context, fieldName: string) {
         return body[fieldName] as string | undefined;
     }
     return;
-}
-
-/**
- * Check if a directory of file exists.
- * @param path Path of the file/dir to check
- * @returns boolean
- */
-export async function exists(path: string): Promise<boolean> {
-    try {
-        await Deno.stat(path);
-        return true; // Path exists
-    } catch (_) {
-        return false;
-    }
 }
 
 export function parseTimeToMs(timeStr: string): number {
@@ -392,14 +378,24 @@ export async function deleteUserReferences(id: string) {
     txn.delete(['playQueue', id]);
 
     // Delete now playing entries
-    for await (const entry of database.list({ prefix: ['nowPlaying', id] })) {
-        txn.delete(entry.key);
+    for await (const entry of database.list({ prefix: ['nowPlaying'] })) { // Iterate all nowPlaying
+        if (entry.key[1] === id) { // Check if user ID matches
+            txn.delete(entry.key);
+        }
     }
 
     // Delete playlists owned by the user
     for await (const entry of database.list({ prefix: ['playlists'] })) {
         const playlist = entry.value as Playlist;
         if (playlist.owner === id) {
+            txn.delete(entry.key);
+        }
+    }
+
+    // Delete shares created by the user
+    for await (const entry of database.list({ prefix: ['shares'] })) {
+        const share = entry.value as Share; // Assuming Share type from zod.ts
+        if (share.userId === id) {
             txn.delete(entry.key);
         }
     }
@@ -453,7 +449,7 @@ export async function createResponse(
     return c.json(responseData, error ? 400 : 200);
 }
 
-export async function validateAuth(c: Context): Promise<Response | SubsonicUser> {
+export async function validateAuth(c: Context): Promise<Response | SubsonicUser & { id: string }> {
     const username = await getField(c, 'u');
     const password = await getField(c, 'p');
     const token = await getField(c, 't');
@@ -476,7 +472,7 @@ export async function validateAuth(c: Context): Promise<Response | SubsonicUser>
         if (expectedToken !== token) {
             return createResponse(c, {}, 'failed', { code: 40, message: ERROR_MESSAGES[40] });
         }
-        return user.subsonic;
+        return { ...user.subsonic, id: user.backend.id };
     }
 
     // ✅ Basic Authentication
@@ -492,7 +488,7 @@ export async function validateAuth(c: Context): Promise<Response | SubsonicUser>
             return createResponse(c, {}, 'failed', { code: 40, message: ERROR_MESSAGES[40] });
         }
 
-        return user.subsonic;
+        return { ...user.subsonic, id: user.backend.id };
     }
 
     return createResponse(c, {}, 'failed', { code: 42, message: ERROR_MESSAGES[42] });

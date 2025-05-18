@@ -1,61 +1,98 @@
 import { Context, Hono } from '@hono/hono';
 import { createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
-import { Album, AlbumID3, Artist, userData } from '../../zod.ts';
+import { AlbumID3, AlbumSchema, ArtistID3, ArtistSchema, userData } from '../../zod.ts'; // ArtistSchema for parsing
+
+// Helper function to format URL (can be shared or defined locally)
+function formatFullUrl(c: Context, relativeUrl?: string): string | undefined {
+    if (!relativeUrl) return undefined;
+    const requestUrl = new URL(c.req.url);
+    const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
+    return `${baseUrl}${relativeUrl}`;
+}
 
 const getArtist = new Hono();
 
-async function handlegetArtist(c: Context) {
+async function handleGetArtist(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
 
     const artistId = await getField(c, 'id') || '';
 
     if (!artistId) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });
-    const Artist = (await database.get(['artists', artistId])).value as Artist | undefined;
-    if (!Artist) return createResponse(c, {}, 'failed', { code: 70, message: 'Artist not found' });
+
+    const artistEntry = await database.get(['artists', artistId]);
+    if (!artistEntry.value) return createResponse(c, {}, 'failed', { code: 70, message: 'Artist not found' });
+
+    const parsedArtist = ArtistSchema.safeParse(artistEntry.value);
+    if (!parsedArtist.success) {
+        return createResponse(c, {}, 'failed', { code: 0, message: 'Malformed artist data in database.' });
+    }
+    const artistData = parsedArtist.data; // This is the full Artist object (includes artistInfo)
 
     const user = await getUserByUsername(isValidated.username);
     if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
 
-    const userData = (await database.get(['userData', user.backend.id, 'artist', artistId])).value as userData | undefined;
-    if (userData) {
-        if (userData.starred) Artist.artist.starred = userData.starred.toISOString();
-        if (userData.userRating) Artist.artist.userRating = userData.userRating;
+    // Prepare the artist object for the response (ArtistID3 structure)
+    const artistResponse: ArtistID3 = { ...artistData.artist }; // Start with the ArtistID3 part
+
+    // Add user-specific data
+    const userArtistData = (await database.get(['userData', user.backend.id, 'artist', artistId])).value as userData | undefined;
+    if (userArtistData) {
+        if (userArtistData.starred) artistResponse.starred = userArtistData.starred.toISOString();
+        if (userArtistData.userRating) artistResponse.userRating = userArtistData.userRating;
     }
 
-    for (let i = 0; i < Artist.artist.album.length; i++) {
-        const Album = (await database.get(['albums', Artist.artist.album[i] as string])).value as Album | undefined;
-        if (!Album) return createResponse(c, {}, 'failed', { code: 0, message: 'Artist album not found' });
-        const album = Album.subsonic;
-        // @ts-expect-error A weird error with Deno type checking i guess.
-        delete album.song;
+    // Format artistImageUrl with base URL
+    // It uses artistData.artist.artistImageUrl which should already be the proxied one after MediaScanner runs
+    artistResponse.artistImageUrl = formatFullUrl(c, artistData.artist.artistImageUrl);
 
-        const userData = (await database.get(['userData', user.backend.id, 'album', album.id])).value as userData | undefined;
-        if (userData) {
-            if (userData.starred) album.starred = userData.starred.toISOString();
-            if (userData.played) album.played = userData.played.toISOString();
-            if (userData.playCount) album.playCount = userData.playCount;
-            if (userData.userRating) album.userRating = userData.userRating;
+    // Process albums
+    const responseAlbums: AlbumID3[] = [];
+    if (Array.isArray(artistData.artist.album)) {
+        for (const albumIdOrObject of artistData.artist.album) {
+            const albumId = typeof albumIdOrObject === 'string' ? albumIdOrObject : (albumIdOrObject as AlbumID3).id;
+            const albumEntry = await database.get(['albums', albumId]);
+            if (albumEntry.value) {
+                const parsedAlbum = AlbumSchema.safeParse(albumEntry.value);
+                if (parsedAlbum.success) {
+                    const albumSubsonic = parsedAlbum.data.subsonic;
+                    // @ts-expect-error Subsonic API for getArtist doesn't want songs in album objects
+                    delete albumSubsonic.song;
+
+                    const userAlbumData = (await database.get(['userData', user.backend.id, 'album', albumSubsonic.id])).value as
+                        | userData
+                        | undefined;
+                    if (userAlbumData) {
+                        if (userAlbumData.starred) albumSubsonic.starred = userAlbumData.starred.toISOString();
+                        if (userAlbumData.played) albumSubsonic.played = userAlbumData.played.toISOString();
+                        if (userAlbumData.playCount) albumSubsonic.playCount = userAlbumData.playCount;
+                        if (userAlbumData.userRating) albumSubsonic.userRating = userAlbumData.userRating;
+                    }
+                    // Format album coverArt URL
+                    if (albumSubsonic.coverArt) { // coverArt is an ID
+                        albumSubsonic.coverArt = formatFullUrl(c, `/api/public-cover/${albumSubsonic.coverArt}?size=300`); // Example size
+                    }
+                    responseAlbums.push(albumSubsonic);
+                }
+            }
         }
-        Artist.artist.album[i] = album;
     }
-
-    if (Artist.artist.album.length) {
-        Artist.artist.album = (Artist.artist.album as AlbumID3[]).sort((a, b) => {
-            const numA = parseInt(a.id.slice(1)); // Extract number from "a1", "a2", etc.
-            const numB = parseInt(b.id.slice(1));
-            return numA - numB;
-        });
-    }
+    // Sort albums if needed (e.g., by year or name, original code sorted by id number)
+    artistResponse.album = responseAlbums.sort((a, b) => {
+        const numA = parseInt(a.id.replace(/[^0-9]/g, ''), 10) || 0;
+        const numB = parseInt(b.id.replace(/[^0-9]/g, ''), 10) || 0;
+        if (numA !== numB) return numA - numB;
+        return (a.year || 0) - (b.year || 0) || a.name.localeCompare(b.name); // Fallback sort
+    });
 
     return createResponse(c, {
-        artist: Artist.artist,
+        artist: artistResponse,
     }, 'ok');
 }
 
-getArtist.get('/getArtist', handlegetArtist);
-getArtist.post('/getArtist', handlegetArtist);
-getArtist.get('/getArtist.view', handlegetArtist);
-getArtist.post('/getArtist.view', handlegetArtist);
+getArtist.get('/getArtist', handleGetArtist);
+getArtist.post('/getArtist', handleGetArtist);
+getArtist.get('/getArtist.view', handleGetArtist);
+getArtist.post('/getArtist.view', handleGetArtist);
 
 export default getArtist;

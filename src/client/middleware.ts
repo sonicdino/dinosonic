@@ -55,6 +55,16 @@ export const verifyJWT = async (token: string) => {
 
 export const authMiddleware: MiddlewareHandler = async (c, next) => {
     const pubPaths = ['/admin/login', '/api/login', '/api/version'];
+    const publicApiPaths = [
+        '/api/public-share-details',
+        '/api/public-stream',
+        '/api/public-cover',
+    ];
+
+    if (publicApiPaths.some((p) => c.req.path.startsWith(p))) {
+        return await next();
+    }
+
     const cookies = getCookies(c.req.raw.headers);
     const token = cookies.Dinosonic_Auth;
 

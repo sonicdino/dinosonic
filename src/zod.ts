@@ -19,7 +19,7 @@ export const CoverArtSchema = z.object({
 });
 
 export const ConfigTranscodingOptionSchema = z.object({
-    enabled: z.boolean().default(false),
+    enabled: z.boolean().default(true),
     ffmpeg_path: z.string().default('ffmpeg'),
 });
 
@@ -52,7 +52,7 @@ export const ConfigSchema = z.object({
     port: z.number(),
     log_level: z.string().default('OFF'),
     data_folder: z.string(),
-    transcoding: ConfigTranscodingOptionSchema.optional(),
+    transcoding: ConfigTranscodingOptionSchema.default({ enabled: true, ffmpeg_path: 'ffmpeg' }),
     last_fm: ConfigLastFMOptionSchema.optional(),
     spotify: ConfigSpotifyOptionSchema.optional(),
     music_folders: z.array(z.string()).default([]),
@@ -309,6 +309,18 @@ export const PlaylistSchema = z.object({
     coverArt: z.string().optional(),
 });
 
+export const ShareSchema = z.object({
+    id: z.string(), // Unique ID for the share link itself
+    userId: z.string(), // ID of the user who created the share
+    itemId: z.string(), // ID of the song, album, playlist, or coverArt
+    itemType: z.enum(['song', 'album', 'playlist', 'coverArt']),
+    description: z.string().optional(),
+    created: z.date(),
+    expires: z.date().optional().nullable(),
+    lastViewed: z.date().optional().nullable(),
+    viewCount: z.number().default(0),
+});
+
 export type userData = z.infer<typeof userDataSchema>;
 export type CoverArt = z.infer<typeof CoverArtSchema>;
 export type ConfigTranscodingOption = z.infer<typeof ConfigTranscodingOptionSchema>;
@@ -334,6 +346,8 @@ export type SubsonicUser = z.infer<typeof SubsonicUserSchema>;
 export type BackendUser = z.infer<typeof BackendUserSchema>;
 export type User = z.infer<typeof UserSchema>;
 export type Playlist = z.infer<typeof PlaylistSchema>;
+export type Share = z.infer<typeof ShareSchema>;
+
 export interface nowPlaying {
     track: SongID3;
     minutesAgo: Date;
