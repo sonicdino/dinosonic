@@ -8,7 +8,7 @@ import { blue, bold, gray, red, yellow } from '@std/fmt/colors';
 
 const SERVER_NAME = 'Dinosonic';
 const API_VERSION = '1.16.1';
-export const SERVER_VERSION = '0.1.5';
+export const SERVER_VERSION = '0.1.6';
 export let database: Deno.Kv;
 export let config: Config;
 export let logger = log.getLogger();
@@ -106,7 +106,7 @@ export async function checkInternetConnection() {
     }
 }
 
-export async function generateId(): Promise<string> {
+export async function generateId(length: number = 30): Promise<string> {
     const randomBytes = new Uint8Array(32);
     crypto.getRandomValues(randomBytes);
 
@@ -117,9 +117,9 @@ export async function generateId(): Promise<string> {
         .join('');
 
     // Pick a random start position and take 30 characters
-    const maxStart = hashHex.length - 30;
+    const maxStart = hashHex.length - length;
     const start = Math.floor(Math.random() * (maxStart + 1));
-    return hashHex.slice(start, start + 30);
+    return hashHex.slice(start, start + length);
 }
 
 export function setConstants(Database: Deno.Kv, Config: Config) {
