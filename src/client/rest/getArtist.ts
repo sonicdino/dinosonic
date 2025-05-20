@@ -68,10 +68,7 @@ async function handleGetArtist(c: Context) {
                         if (userAlbumData.playCount) albumSubsonic.playCount = userAlbumData.playCount;
                         if (userAlbumData.userRating) albumSubsonic.userRating = userAlbumData.userRating;
                     }
-                    // Format album coverArt URL
-                    if (albumSubsonic.coverArt) { // coverArt is an ID
-                        albumSubsonic.coverArt = formatFullUrl(c, `/api/public-cover/${albumSubsonic.coverArt}?size=300`); // Example size
-                    }
+
                     responseAlbums.push(albumSubsonic);
                 }
             }

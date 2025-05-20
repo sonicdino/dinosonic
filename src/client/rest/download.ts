@@ -1,6 +1,7 @@
 import { Context, Hono } from '@hono/hono';
 import { createResponse, database, getField, validateAuth } from '../../util.ts';
 import { Song } from '../../zod.ts';
+import { basename } from '@std/path';
 
 const download = new Hono();
 
@@ -14,14 +15,16 @@ async function handledownload(c: Context) {
     const track = (await database.get(['tracks', id])).value as Song | null;
     if (!track) return createResponse(c, {}, 'failed', { code: 70, message: 'Song not found' });
 
+    const filename = basename(track.subsonic.path);
+
     const file = await Deno.readFile(track.subsonic.path);
     return new Response(file, {
         headers: {
             'Content-Type': track.subsonic.contentType || 'audio/mpeg',
+            'Content-Disposition': `attachment; filename="${filename}"`,
         },
     });
 }
-
 download.get('/download', handledownload);
 download.post('/download', handledownload);
 download.get('/download.view', handledownload);
