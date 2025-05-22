@@ -29,8 +29,9 @@ async function handlesearch(c: Context) {
         // const maxOffset = (await database.get(['counters', 'A'])).value as number;
         // artistOffset = Math.min(artistOffset, maxOffset);
         const Artists = await Array.fromAsync(database.list({ prefix: ['artists'] }));
-        const fuse = new Fuse(Artists, { keys: ['value.artist.name'], threshold: 0.3, ignoreLocation: true, useExtendedSearch: true });
-        const results = query.length ? fuse.search(query).map((r) => r.item) : Artists;
+        const fuse = new Fuse(Artists, { keys: ['value.artist.name'], threshold: 0.3, ignoreLocation: true, useExtendedSearch: false });
+        // deno-lint-ignore no-explicit-any
+        const results = query.length ? fuse.search(query).map((r: any) => r.item) : Artists;
         const slicedResults = results.slice(artistOffset, artistOffset + artistCount);
 
         for (const result of slicedResults) {
@@ -66,7 +67,8 @@ async function handlesearch(c: Context) {
                 ignoreLocation: true,
                 useExtendedSearch: false,
             });
-            results = fuse.search(query).map((r) => r.item);
+            // deno-lint-ignore no-explicit-any
+            results = fuse.search(query).map((r: any) => r.item);
         }
 
         const slicedResults = results.slice(albumOffset, albumOffset + albumCount);
@@ -105,9 +107,10 @@ async function handlesearch(c: Context) {
                 keys: ['searchString'],
                 threshold: 0.3,
                 ignoreLocation: true,
-                useExtendedSearch: true,
+                useExtendedSearch: false,
             });
-            results = fuse.search(query).map((r) => r.item);
+            // deno-lint-ignore no-explicit-any
+            results = fuse.search(query).map((r: any) => r.item);
         }
 
         const slicedResults = results.slice(songOffset, songOffset + songCount);

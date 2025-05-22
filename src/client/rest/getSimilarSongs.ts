@@ -1,6 +1,6 @@
 import { Context, Hono } from '@hono/hono';
-import { createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
-import { Song, SongID3, userData } from '../../zod.ts';
+import { createResponse, database, getField, getUserByUsername, validateAuth, logger } from '../../util.ts';
+import { AlbumSchema, ArtistSchema, Song, SongID3, SongSchema, userData } from '../../zod.ts';
 
 const getSimilarSongs = new Hono();
 
@@ -9,74 +9,226 @@ async function handlegetSimilarSongs(c: Context) {
     if (isValidated instanceof Response) return isValidated;
 
     const count = parseInt(await getField(c, 'count') || '50');
-    const trackId = await getField(c, 'id') || '';
+    const inputId = await getField(c, 'id') || '';
 
-    if (!trackId) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });
-    const song = (await database.get(['tracks', trackId])).value as Song | undefined;
-    if (!song) return createResponse(c, {}, 'failed', { code: 70, message: 'Song not found' });
+    if (!inputId) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });
 
     const user = await getUserByUsername(isValidated.username);
     if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
 
-    const baseUserData = await getUserTrackData(user.backend.id, song.subsonic.id);
-    if (baseUserData) {
-        if (baseUserData.starred) song.subsonic.starred = baseUserData.starred.toISOString();
-        if (baseUserData.playCount) song.subsonic.playCount = baseUserData.playCount;
-        if (baseUserData.userRating) song.subsonic.userRating = baseUserData.userRating;
+    const seedSongs: SongID3[] = [];
+    let itemType: 'song' | 'album' | 'artist' | null = null;
+    let seedItemId: string = inputId;
+
+    const songEntry = await database.get(['tracks', inputId]);
+    if (songEntry.value) {
+        const parsedSong = SongSchema.safeParse(songEntry.value);
+        if (parsedSong.success) {
+            seedSongs.push(await enrichSongWithUserData(parsedSong.data.subsonic, user.backend.id));
+            itemType = 'song';
+        }
+    } else {
+        const albumEntry = await database.get(['albums', inputId]);
+        if (albumEntry.value) {
+            const parsedAlbum = AlbumSchema.safeParse(albumEntry.value);
+            if (parsedAlbum.success) {
+                itemType = 'album';
+                seedItemId = parsedAlbum.data.subsonic.id;
+                const album = parsedAlbum.data;
+                logger.debug(`Finding similar songs for album: ${album.subsonic.name} (ID: ${seedItemId})`);
+                for (const songIdOrObj of album.subsonic.song) {
+                    const songId = typeof songIdOrObj === 'string' ? songIdOrObj : (songIdOrObj as SongID3).id;
+                    const trackEntry = await database.get(['tracks', songId]);
+                    if (trackEntry.value) {
+                        const songData = SongSchema.safeParse(trackEntry.value);
+                        if (songData.success) seedSongs.push(await enrichSongWithUserData(songData.data.subsonic, user.backend.id));
+                    }
+                    if (seedSongs.length >= 5) break;
+                }
+                if (seedSongs.length === 0) {
+                    logger.warn(`Album ${album.subsonic.name} has no valid/parsable songs to use as seed.`);
+                }
+            }
+        } else {
+            const artistEntry = await database.get(['artists', inputId]);
+            if (artistEntry.value) {
+                const parsedArtist = ArtistSchema.safeParse(artistEntry.value);
+                if (parsedArtist.success) {
+                    itemType = 'artist';
+                    seedItemId = parsedArtist.data.artist.id;
+                    const artist = parsedArtist.data;
+                    logger.debug(`Finding similar songs for artist: ${artist.artist.name} (ID: ${seedItemId})`);
+                    let artistSongCount = 0;
+                    for await (const trackEntryIterator of database.list({ prefix: ['tracks'] })) {
+                        const songData = SongSchema.safeParse(trackEntryIterator.value);
+                        if (songData.success && songData.data.subsonic.artists.some(a => a.id === artist.artist.id)) {
+                            seedSongs.push(await enrichSongWithUserData(songData.data.subsonic, user.backend.id));
+                            artistSongCount++;
+                            if (artistSongCount >= 5) break;
+                        }
+                    }
+                    if (seedSongs.length === 0) {
+                        logger.warn(`Artist ${artist.artist.name} has no songs in the library to use as seed.`);
+                    }
+                }
+            }
+        }
+    }
+
+    if (seedSongs.length === 0) {
+        return createResponse(c, {}, 'failed', { code: 70, message: 'Could not find a valid song, album, or artist for the given ID to seed similar songs.' });
+    }
+
+    logger.debug(`Using ${seedSongs.length} seed song(s). First seed: ${seedSongs[0].title}, Type: ${itemType}, ID: ${seedItemId}`);
+
+    const allLibrarySongs: Song[] = [];
+    for await (const entry of database.list({ prefix: ['tracks'] })) {
+        const parsed = SongSchema.safeParse(entry.value);
+        if (parsed.success) allLibrarySongs.push(parsed.data);
     }
 
     const scoredSongs = await Promise.all(
-        (await Array.fromAsync(database.list({ prefix: ['tracks'] })))
-            .filter((entry) => (entry.value as Song).subsonic.id !== song.subsonic.id)
-            .map(async (candidate) => {
-                const trackCanditate = (candidate.value as Song).subsonic;
-                const candidateUserData = await getUserTrackData(user.backend.id, trackCanditate.id);
-                if (candidateUserData) {
-                    if (candidateUserData.starred) song.subsonic.starred = candidateUserData.starred.toISOString();
-                    if (candidateUserData.playCount) song.subsonic.playCount = candidateUserData.playCount;
-                    if (candidateUserData.userRating) song.subsonic.userRating = candidateUserData.userRating;
+        allLibrarySongs
+            .filter(candidateSongFull =>
+                !seedSongs.some(seed => seed.id === candidateSongFull.subsonic.id) &&
+                (itemType !== 'album' || candidateSongFull.subsonic.albumId !== seedItemId) &&
+                (itemType !== 'artist' || !candidateSongFull.subsonic.artists.some(a => a.id === seedItemId))
+            )
+            .map(async (candidateSongFull) => {
+                const candidateSong = await enrichSongWithUserData(candidateSongFull.subsonic, user.backend.id);
+                let maxScore = 0;
+                for (const seed of seedSongs) {
+                    const currentScore = calculateSimilarity(seed, candidateSong, itemType, seedItemId);
+                    if (currentScore > maxScore) {
+                        maxScore = currentScore;
+                    }
                 }
-                const score = calculateSimilarity(song.subsonic, trackCanditate);
-                return { song: trackCanditate, score };
-            }),
+                return { song: candidateSong, score: maxScore };
+            })
     );
+
+    const relatedButNotSeedSongs: { song: SongID3, score: number }[] = [];
+    if (itemType === 'album') {
+        const albumEntry = await database.get(['albums', seedItemId]);
+        if (albumEntry.value) {
+            const album = AlbumSchema.parse(albumEntry.value).subsonic;
+            for (const songIdOrObj of album.song) {
+                const songId = typeof songIdOrObj === 'string' ? songIdOrObj : (songIdOrObj as SongID3).id;
+                if (!seedSongs.some(s => s.id === songId)) {
+                    const trackEntry = await database.get(['tracks', songId]);
+                    if (trackEntry.value) {
+                        const songData = SongSchema.parse(trackEntry.value);
+                        relatedButNotSeedSongs.push({ song: await enrichSongWithUserData(songData.subsonic, user.backend.id), score: 1000 }); // Prioritize same album
+                    }
+                }
+            }
+        }
+    } else if (itemType === 'artist') {
+        for await (const trackEntryIterator of database.list({ prefix: ['tracks'] })) {
+            const songParseResult = SongSchema.safeParse(trackEntryIterator.value);
+            if (songParseResult.success) {
+                const songData = songParseResult.data;
+                if (songData.subsonic.artists.some(a => a.id === seedItemId) && !seedSongs.some(s => s.id === songData.subsonic.id)) {
+                    relatedButNotSeedSongs.push({ song: await enrichSongWithUserData(songData.subsonic, user.backend.id), score: 900 }); // Prioritize same artist
+                }
+            }
+        }
+    }
+
+    const combinedScoredSongs = [...relatedButNotSeedSongs, ...scoredSongs.filter(item => item.score > 0)];
+    const finalRankedSongs = combinedScoredSongs
+        .sort((a, b) => b.score - a.score)
+        .map(item => item.song);
+
+    const uniqueSongs: SongID3[] = [];
+    const seenIds = new Set<string>();
+    for (const song of finalRankedSongs) {
+        if (!seenIds.has(song.id)) {
+            uniqueSongs.push(song);
+            seenIds.add(song.id);
+        }
+    }
+
+    const shuffledResult = shuffleArray(uniqueSongs.slice(0, count));
 
     return createResponse(c, {
         [/(getSimilarSongs2|getSimilarSongs2\.view)$/.test(c.req.path) ? 'similarSongs2' : 'similarSongs']: {
-            // I really don't know why I bothered to sort by score when I was just going to shuffle it anyway, but whatever.
-            song: shuffleArray(scoredSongs.filter((item) => item.score > 0).sort((a, b) => b.score - a.score))
-                .slice(0, count)
-                .map((item) => item.song),
+            song: shuffledResult,
         },
     }, 'ok');
 }
 
-async function getUserTrackData(id: string, trackId: string) {
-    return ((await database.get(['userData', id, 'track', trackId])).value as userData) || {};
+async function enrichSongWithUserData(song: SongID3, userId: string): Promise<SongID3> {
+    const userTrackData = ((await database.get(['userData', userId, 'track', song.id])).value as userData) || {};
+    return {
+        ...song,
+        starred: userTrackData.starred ? userTrackData.starred.toISOString() : undefined,
+        playCount: userTrackData.playCount,
+        userRating: userTrackData.userRating,
+    };
 }
 
 function shuffleArray<T>(array: T[]): T[] {
-    return array
-        .map((item) => ({ item, rand: Math.random() })) // Assign random values
-        .sort((a, b) => a.rand - b.rand) // Sort by random values
-        .map(({ item }) => item); // Extract items
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
 }
 
-function calculateSimilarity(baseSong: SongID3, candidate: SongID3) {
+function calculateSimilarity(
+    baseSong: SongID3,
+    candidate: SongID3,
+    seedType: 'song' | 'album' | 'artist' | null,
+    seedItemId: string
+): number {
     let score = 0;
 
-    if (baseSong.genre && candidate.genre === baseSong.genre) score += 15;
-    if (baseSong.artists.some((a) => candidate.artists.includes(a))) score += 10;
-    if (baseSong.albumId && candidate.albumId === baseSong.albumId) score += 5;
-    if (baseSong.bpm && candidate.bpm && Math.abs(baseSong.bpm - candidate.bpm) <= 10) score += 10;
-    if (baseSong.year && candidate.year && Math.abs(baseSong.year - candidate.year) <= 5) score += 5;
-    if (baseSong?.starred && candidate?.starred) score += 20;
-    if (baseSong?.playCount && candidate?.playCount) {
-        const playDiff = Math.abs(baseSong.playCount - candidate.playCount);
-        score += Math.max(0, 20 - (playDiff / 10));
-    }
-    if (baseSong?.userRating && candidate?.userRating && Math.abs(baseSong.userRating - candidate.userRating) <= 1) {
+    if (baseSong.genre && candidate.genre && baseSong.genre.toLowerCase() === candidate.genre.toLowerCase()) {
+        score += 20;
+    } else if (baseSong.genres && candidate.genres && baseSong.genres.some(g1 => candidate.genres!.some(g2 => g1.name.toLowerCase() === g2.name.toLowerCase()))) {
         score += 15;
+    }
+
+    const baseArtistIds = new Set(baseSong.artists.map(a => a.id));
+    const candidateArtistIds = new Set(candidate.artists.map(a => a.id));
+    const commonArtists = [...baseArtistIds].filter(id => candidateArtistIds.has(id));
+
+    if (commonArtists.length > 0) {
+        score += 25;
+        if (commonArtists.length === baseArtistIds.size && baseArtistIds.size > 0) {
+            score += 10;
+        }
+        // This boost is now handled by pre-adding related songs with high scores.
+        if (seedType === 'artist' && candidateArtistIds.has(seedItemId)) {
+            score += 30;
+        }
+    }
+
+    if (baseSong.albumId && candidate.albumId === baseSong.albumId) {
+        score += 15;
+        // This boost is now handled by pre-adding related songs with high scores.
+        if (seedType === 'album' && candidate.albumId === seedItemId) {
+            score += 50;
+        }
+    }
+
+    if (baseSong.year && candidate.year) {
+        const yearDiff = Math.abs(baseSong.year - candidate.year);
+        if (yearDiff <= 2) score += 10;
+        else if (yearDiff <= 5) score += 6;
+        else if (yearDiff <= 10) score += 3;
+    }
+
+    if (baseSong.starred && candidate.starred) score += 12;
+    if (baseSong.userRating && candidate.userRating) {
+        if (baseSong.userRating >= 4 && candidate.userRating >= 4) score += 12;
+        else if (Math.abs(baseSong.userRating - candidate.userRating) <= 1) score += 6;
+    }
+    if (baseSong.playCount && candidate.playCount) {
+        const avgPlayCount = (baseSong.playCount + candidate.playCount) / 2;
+        if (avgPlayCount > 10) score += 5;
+        if (avgPlayCount > 30) score += 5;
     }
 
     return score;

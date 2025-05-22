@@ -2,7 +2,7 @@
 import { walk } from '@std/fs';
 import { IAudioMetadata, IPicture, parseFile } from 'music-metadata';
 import * as path from '@std/path';
-import { checkInternetConnection, config, database, generateId, getUserByUsername, logger, separatorsToRegex } from './util.ts';
+import { checkInternetConnection, config, database, generateId, logger, separatorsToRegex } from './util.ts';
 import {
     AlbumID3Artists,
     AlbumInfoSchema,
@@ -325,7 +325,7 @@ async function storePrimaryCoverArt(
     trackPath?: string,
 ): Promise<string | null> {
     const coversDir = path.join(config.data_folder, 'covers');
-    await Deno.mkdir(coversDir, { recursive: true }).catch(() => {});
+    await Deno.mkdir(coversDir, { recursive: true }).catch(() => { });
     const mimeToExt: Record<string, string> = {
         'image/jpeg': 'jpg',
         'image/jpg': 'jpg',
@@ -390,8 +390,8 @@ async function storePrimaryCoverArt(
                     newCoverSource = externalUrl.includes('spotify')
                         ? 'Spotify'
                         : (externalUrl.includes('last.fm') || externalUrl.includes('audioscrobbler'))
-                        ? 'Last.fm'
-                        : 'external URL';
+                            ? 'Last.fm'
+                            : 'external URL';
                 } else logger.warn(`Skipping download for ${itemId} from ${externalUrl}: Content-Type not an image (${contentType})`);
             } else logger.warn(`Failed to download cover for ${itemId} from ${externalUrl}: ${response.status}`);
             // deno-lint-ignore no-explicit-any
@@ -460,7 +460,7 @@ async function handleAlbum(albumId: string, trackId: string, albumArtists: Album
         if (changes) {
             existingAlbum.subsonic.displayArtist = existingAlbum.subsonic.artists.length > 1
                 ? existingAlbum.subsonic.artists.slice(0, -1).map((a) => a.name).join(', ') + ' & ' +
-                    existingAlbum.subsonic.artists[existingAlbum.subsonic.artists.length - 1].name
+                existingAlbum.subsonic.artists[existingAlbum.subsonic.artists.length - 1].name
                 : existingAlbum.subsonic.artists[0]?.name || '';
             const validatedAlbum = AlbumSchema.safeParse(existingAlbum);
             if (validatedAlbum.success) await database.set(['albums', albumId], validatedAlbum.data);
@@ -489,7 +489,7 @@ async function handleAlbum(albumId: string, trackId: string, albumArtists: Album
             genres: genres,
             created: new Date(
                 metadata.common.date ||
-                    (releaseDate.success ? `${releaseDate.data.year}-${releaseDate.data.month}-${releaseDate.data.day}` : '1970-01-01'),
+                (releaseDate.success ? `${releaseDate.data.year}-${releaseDate.data.month}-${releaseDate.data.day}` : '1970-01-01'),
             ).toISOString(),
             artistId: albumArtists[0]?.id || undefined,
             songCount: 1,
@@ -554,8 +554,7 @@ async function handleArtist(artistString: string): Promise<AlbumID3Artists[]> {
 
 async function handleLastFMMetadata() {
     const connectedToInternet = await checkInternetConnection();
-    const adminUser = await getUserByUsername('admin');
-    const systemUserIdForShares = adminUser ? adminUser.backend.id : 'dinosonic_system_user_id';
+    const systemUserIdForShares = 'dinosonic_system_user_id';
 
     if (!connectedToInternet || !config.last_fm?.enabled || !config.last_fm.api_key) {
         if (!connectedToInternet) logger.debug('LFM Metadata: No internet connection.');
