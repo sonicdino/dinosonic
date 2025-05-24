@@ -189,57 +189,59 @@ function calculateSimilarity(
 
     // Genre matching - keep this high as it's important for musical coherence
     if (baseSong.genre && candidate.genre && baseSong.genre.toLowerCase() === candidate.genre.toLowerCase()) {
-        score += 20;
-    } else if (baseSong.genres && candidate.genres && baseSong.genres.some(g1 => candidate.genres!.some(g2 => g1.name.toLowerCase() === g2.name.toLowerCase()))) {
         score += 15;
+    } else if (baseSong.genres && candidate.genres && baseSong.genres.some(g1 => candidate.genres!.some(g2 => g1.name.toLowerCase() === g2.name.toLowerCase()))) {
+        score += 12;
     }
 
-    // Artist matching - significantly reduced to encourage diversity
+    // Artist matching - reduced to encourage diversity
     const baseArtistIds = new Set(baseSong.artists.map(a => a.id));
     const candidateArtistIds = new Set(candidate.artists.map(a => a.id));
     const commonArtists = [...baseArtistIds].filter(id => candidateArtistIds.has(id));
 
     if (commonArtists.length > 0) {
-        score += 8; // Reduced from 25 to 8
+        score += 6; // Reduced to encourage artist diversity
         if (commonArtists.length === baseArtistIds.size && baseArtistIds.size > 0) {
-            score += 4; // Reduced from 10 to 4
+            score += 3; // Small bonus for exact artist match
         }
-        // Seed-specific artist boost - reduced but still present for seed context
+        // Seed-specific artist boost - minimal to maintain some context
         if (seedType === 'artist' && candidateArtistIds.has(seedItemId)) {
-            score += 6; // Reduced from 30 to 6
+            score += 8;
         }
     }
 
-    // Album matching - significantly reduced to encourage cross-album exploration
+    // Album matching - reduced to encourage cross-album exploration
     if (baseSong.albumId && candidate.albumId === baseSong.albumId) {
-        score += 4; // Reduced from 15 to 4
-        // Seed-specific album boost - drastically reduced
+        score += 3; // Reduced to encourage album diversity
+        // Seed-specific album boost - minimal
         if (seedType === 'album' && candidate.albumId === seedItemId) {
-            score += 8; // Reduced from 50 to 8
+            score += 8;
         }
     }
 
-    // Year proximity - slightly increased to compensate for reduced artist/album weights
+    // BPM matching - from old function
+    if (baseSong.bpm && candidate.bpm && Math.abs(baseSong.bpm - candidate.bpm) <= 10) {
+        score += 10;
+    }
+
+    // Year proximity - from old function with slight adjustment
     if (baseSong.year && candidate.year) {
         const yearDiff = Math.abs(baseSong.year - candidate.year);
-        if (yearDiff <= 2) score += 12; // Increased from 10
-        else if (yearDiff <= 5) score += 8; // Increased from 6
-        else if (yearDiff <= 10) score += 4; // Increased from 3
+        if (yearDiff <= 5) score += 5;
+        else if (yearDiff <= 10) score += 3;
     }
 
-    // User preference factors - slightly boosted to maintain quality
-    if (baseSong.starred && candidate.starred) score += 15; // Increased from 12
-    if (baseSong.userRating && candidate.userRating) {
-        if (baseSong.userRating >= 4 && candidate.userRating >= 4) score += 15; // Increased from 12
-        else if (Math.abs(baseSong.userRating - candidate.userRating) <= 1) score += 8; // Increased from 6
+    // User preference factors - high importance for quality
+    if (baseSong.starred && candidate.starred) score += 20; // From old function
+
+    if (baseSong.userRating && candidate.userRating && Math.abs(baseSong.userRating - candidate.userRating) <= 1) {
+        score += 15; // From old function
     }
 
-    // Play count factor - slightly increased
+    // Play count factor - from old function with improvements
     if (baseSong.playCount && candidate.playCount) {
-        const avgPlayCount = (baseSong.playCount + candidate.playCount) / 2;
-        if (avgPlayCount > 10) score += 6; // Increased from 5
-        if (avgPlayCount > 30) score += 6; // Increased from 5
-        if (avgPlayCount < 10) score += 1;
+        const playDiff = Math.abs(baseSong.playCount - candidate.playCount);
+        score += Math.max(0, 20 - (playDiff / 10)); // From old function
     }
 
     return score;
