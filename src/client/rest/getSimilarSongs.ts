@@ -112,24 +112,28 @@ async function handlegetSimilarSongs(c: Context) {
         const albumEntry = await database.get(['albums', seedItemId]);
         if (albumEntry.value) {
             const album = AlbumSchema.parse(albumEntry.value).subsonic;
+            // Only take one song from the same album to encourage diversity
             for (const songIdOrObj of album.song) {
                 const songId = typeof songIdOrObj === 'string' ? songIdOrObj : (songIdOrObj as SongID3).id;
                 if (!seedSongs.some(s => s.id === songId)) {
                     const trackEntry = await database.get(['tracks', songId]);
                     if (trackEntry.value) {
                         const songData = SongSchema.parse(trackEntry.value);
-                        relatedButNotSeedSongs.push({ song: await enrichSongWithUserData(songData.subsonic, user.backend.id), score: 1000 }); // Prioritize same album
+                        relatedButNotSeedSongs.push({ song: await enrichSongWithUserData(songData.subsonic, user.backend.id), score: 60 }); // Moderate score for same album
+                        break; // Only add one song from the same album
                     }
                 }
             }
         }
     } else if (itemType === 'artist') {
+        // Only take one song from the same artist to encourage diversity
         for await (const trackEntryIterator of database.list({ prefix: ['tracks'] })) {
             const songParseResult = SongSchema.safeParse(trackEntryIterator.value);
             if (songParseResult.success) {
                 const songData = songParseResult.data;
                 if (songData.subsonic.artists.some(a => a.id === seedItemId) && !seedSongs.some(s => s.id === songData.subsonic.id)) {
-                    relatedButNotSeedSongs.push({ song: await enrichSongWithUserData(songData.subsonic, user.backend.id), score: 900 }); // Prioritize same artist
+                    relatedButNotSeedSongs.push({ song: await enrichSongWithUserData(songData.subsonic, user.backend.id), score: 50 }); // Moderate score for same artist
+                    break; // Only add one song from the same artist
                 }
             }
         }
@@ -169,11 +173,10 @@ async function enrichSongWithUserData(song: SongID3, userId: string): Promise<So
 }
 
 function shuffleArray<T>(array: T[]): T[] {
-    for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
-    }
-    return array;
+    return array
+        .map((item) => ({ item, rand: Math.random() })) // Assign random values
+        .sort((a, b) => a.rand - b.rand) // Sort by random values
+        .map(({ item }) => item); // Extract items
 }
 
 function calculateSimilarity(
@@ -184,6 +187,7 @@ function calculateSimilarity(
 ): number {
     let score = 0;
 
+    // Genre matching - keep this high as it's important for musical coherence
     if (baseSong.genre && candidate.genre && baseSong.genre.toLowerCase() === candidate.genre.toLowerCase()) {
         score += 20;
     } else if (baseSong.genres && candidate.genres && baseSong.genres.some(g1 => candidate.genres!.some(g2 => g1.name.toLowerCase() === g2.name.toLowerCase()))) {
@@ -202,16 +206,16 @@ function calculateSimilarity(
         }
         // Seed-specific artist boost - reduced but still present for seed context
         if (seedType === 'artist' && candidateArtistIds.has(seedItemId)) {
-            score += 12; // Reduced from 30 to 12
+            score += 6; // Reduced from 30 to 6
         }
     }
 
     // Album matching - significantly reduced to encourage cross-album exploration
     if (baseSong.albumId && candidate.albumId === baseSong.albumId) {
-        score += 6; // Reduced from 15 to 6
+        score += 4; // Reduced from 15 to 4
         // Seed-specific album boost - drastically reduced
         if (seedType === 'album' && candidate.albumId === seedItemId) {
-            score += 15; // Reduced from 50 to 15
+            score += 8; // Reduced from 50 to 8
         }
     }
 
@@ -235,6 +239,7 @@ function calculateSimilarity(
         const avgPlayCount = (baseSong.playCount + candidate.playCount) / 2;
         if (avgPlayCount > 10) score += 6; // Increased from 5
         if (avgPlayCount > 30) score += 6; // Increased from 5
+        if (avgPlayCount < 10) score += 1;
     }
 
     return score;
