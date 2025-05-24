@@ -190,45 +190,51 @@ function calculateSimilarity(
         score += 15;
     }
 
+    // Artist matching - significantly reduced to encourage diversity
     const baseArtistIds = new Set(baseSong.artists.map(a => a.id));
     const candidateArtistIds = new Set(candidate.artists.map(a => a.id));
     const commonArtists = [...baseArtistIds].filter(id => candidateArtistIds.has(id));
 
     if (commonArtists.length > 0) {
-        score += 25;
+        score += 8; // Reduced from 25 to 8
         if (commonArtists.length === baseArtistIds.size && baseArtistIds.size > 0) {
-            score += 10;
+            score += 4; // Reduced from 10 to 4
         }
-        // This boost is now handled by pre-adding related songs with high scores.
+        // Seed-specific artist boost - reduced but still present for seed context
         if (seedType === 'artist' && candidateArtistIds.has(seedItemId)) {
-            score += 30;
+            score += 12; // Reduced from 30 to 12
         }
     }
 
+    // Album matching - significantly reduced to encourage cross-album exploration
     if (baseSong.albumId && candidate.albumId === baseSong.albumId) {
-        score += 15;
-        // This boost is now handled by pre-adding related songs with high scores.
+        score += 6; // Reduced from 15 to 6
+        // Seed-specific album boost - drastically reduced
         if (seedType === 'album' && candidate.albumId === seedItemId) {
-            score += 50;
+            score += 15; // Reduced from 50 to 15
         }
     }
 
+    // Year proximity - slightly increased to compensate for reduced artist/album weights
     if (baseSong.year && candidate.year) {
         const yearDiff = Math.abs(baseSong.year - candidate.year);
-        if (yearDiff <= 2) score += 10;
-        else if (yearDiff <= 5) score += 6;
-        else if (yearDiff <= 10) score += 3;
+        if (yearDiff <= 2) score += 12; // Increased from 10
+        else if (yearDiff <= 5) score += 8; // Increased from 6
+        else if (yearDiff <= 10) score += 4; // Increased from 3
     }
 
-    if (baseSong.starred && candidate.starred) score += 12;
+    // User preference factors - slightly boosted to maintain quality
+    if (baseSong.starred && candidate.starred) score += 15; // Increased from 12
     if (baseSong.userRating && candidate.userRating) {
-        if (baseSong.userRating >= 4 && candidate.userRating >= 4) score += 12;
-        else if (Math.abs(baseSong.userRating - candidate.userRating) <= 1) score += 6;
+        if (baseSong.userRating >= 4 && candidate.userRating >= 4) score += 15; // Increased from 12
+        else if (Math.abs(baseSong.userRating - candidate.userRating) <= 1) score += 8; // Increased from 6
     }
+
+    // Play count factor - slightly increased
     if (baseSong.playCount && candidate.playCount) {
         const avgPlayCount = (baseSong.playCount + candidate.playCount) / 2;
-        if (avgPlayCount > 10) score += 5;
-        if (avgPlayCount > 30) score += 5;
+        if (avgPlayCount > 10) score += 6; // Increased from 5
+        if (avgPlayCount > 30) score += 6; // Increased from 5
     }
 
     return score;
