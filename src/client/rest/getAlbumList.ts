@@ -32,7 +32,19 @@ async function handlegetAlbumList(c: Context) {
             break;
 
         case 'newest':
-            Albums = Albums.sort((a, b) => (b.subsonic.year || 0) - (a.subsonic.year || 0));
+            Albums = Albums.sort((a, b) => {
+                const getDate = (album: Album) => {
+                    const year = album.subsonic.year || 1970;
+                    const month = (album.subsonic.releaseDate?.month ?? 1) - 1;
+                    const day = album.subsonic.releaseDate?.day ?? 1;
+                    return new Date(year, month, day);
+                };
+
+                const dateA = getDate(a);
+                const dateB = getDate(b);
+
+                return dateB.getTime() - dateA.getTime(); // newest first
+            });
             break;
 
         case 'alphabeticalByName':

@@ -494,7 +494,7 @@
 
         function updateNowPlayingInfo(song) {
             mainTitle.textContent = song.title || 'Unknown Title';
-            mainArtist.textContent = song.artist ? `Artist: ${song.artist}` : '';
+            mainArtist.textContent = song.artist ? `Artist(s): ${song.displayArtist || song.artist}` : '';
             mainArtist.classList.toggle('hidden', !song.artist);
             mainAlbum.textContent = song.album ? `Album: ${song.album}` : '';
             mainAlbum.classList.toggle('hidden', !song.album);
