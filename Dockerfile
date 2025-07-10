@@ -1,9 +1,5 @@
 
-FROM denoland/deno:latest AS builder
-
-RUN apt-get update && \
-    apt-get install -y ffmpeg && \
-    rm -rf /var/lib/apt/lists/*
+FROM denoland/deno:alpine AS builder
 
 WORKDIR /app
 
@@ -11,11 +7,9 @@ COPY . .
 
 RUN deno task build
 
-FROM debian:bookworm-slim
+FROM frolvlad/alpine-glibc:latest
 
-RUN apt-get update && \
-    apt-get install -y ffmpeg && \
-    rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache ffmpeg
 
 WORKDIR /app
 COPY --from=builder /app/dist/dinosonic /app/dinosonic

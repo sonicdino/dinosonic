@@ -8,7 +8,7 @@ import { blue, bold, gray, red, yellow } from '@std/fmt/colors';
 
 const SERVER_NAME = 'Dinosonic';
 const API_VERSION = '1.16.1';
-export const SERVER_VERSION = '0.1.10';
+export const SERVER_VERSION = '0.1.11';
 export let database: Deno.Kv;
 export let config: Config;
 export let logger = log.getLogger();

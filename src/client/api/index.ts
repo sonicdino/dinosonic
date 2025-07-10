@@ -120,11 +120,10 @@ api.get('/public-stream/:shareId/:itemId', async (c: Context) => {
 
     if (transcodingEnabled && ffmpegPath) {
         logger.debug(`Secure public stream for share ${shareId}, item ${itemId}: Transcoding to Opus.`);
-        const lowQualityOpusBitrate = '64k';
-        const format = 'opus';
-        const contentType = 'audio/opus';
+        const lowQualityMp3Bitrate = '128k';
+        const format = 'mp3';
+        const contentType = 'audio/mpeg';
         const ffmpegArgs = [
-            /* ... Opus args from previous response, including -map_metadata -1 ... */
             '-i',
             originalFilePath,
             '-map_metadata',
@@ -132,11 +131,9 @@ api.get('/public-stream/:shareId/:itemId', async (c: Context) => {
             '-map',
             '0:a',
             '-c:a',
-            'libopus',
+            'libmp3lame',
             '-b:a',
-            lowQualityOpusBitrate,
-            '-vbr',
-            'on',
+            lowQualityMp3Bitrate,
             '-f',
             format,
             '-vn',
@@ -149,7 +146,7 @@ api.get('/public-stream/:shareId/:itemId', async (c: Context) => {
             c.header('Content-Type', contentType);
             c.header('Accept-Ranges', 'none');
             c.header('Cache-Control', 'public, max-age=3600');
-            (async () => {/* ... stderr logging ... */})();
+            (async () => {/* ... stderr logging ... */ })();
             return c.body(process.stdout);
             // deno-lint-ignore no-explicit-any
         } catch (error: any) {
