@@ -72,6 +72,7 @@ if (configFile) {
         log_level: Deno.env.get('DINO_LOG_LEVEL') || 'OFF',
         // @ts-expect-error If data folder is not set via env, error and exit.
         data_folder: Deno.env.get('DINO_DATA_FOLDER'),
+        ui_folder: Deno.env.get('DINO_UI_FOLDER'),
         music_folders: Deno.env.get('DINO_MUSIC_FOLDERS')?.split(';') || [],
         scan_on_start: Deno.env.get('DINO_SCAN_ON_START') === 'true',
         scan_interval: Deno.env.get('DINO_SCAN_INTERVAL') || '1d',
@@ -365,7 +366,39 @@ app.get('/share/:shareId', async (c: Context) => {
     }
 });
 
-app.get('/', (c: Context) => c.text('Dinosonic Subsonic Server is running!'));
+if (config.ui_folder) {
+    try {
+        const uiStat = await Deno.stat(config.ui_folder);
+        if (!uiStat.isDirectory) {
+            throw new Error(`The specified UI path is not a directory: ${config.ui_folder}`);
+        }
+        logger.info(`Serving static UI from: ${config.ui_folder}`);
+
+        app.get(
+            '*',
+            serveStatic({
+                root: config.ui_folder,
+                rewriteRequestPath: (p) => {
+                    if (path.extname(p) === '') {
+                        return 'index.html';
+                    }
+                    return p;
+                },
+            }),
+        );
+        // deno-lint-ignore no-explicit-any
+    } catch (error: any) {
+        if (error instanceof Deno.errors.NotFound) {
+            logger.error(`The specified UI directory does not exist: ${config.ui_folder}`);
+        } else {
+            logger.error(`Error setting up static UI serving: ${error.message}`);
+        }
+        logger.info('Falling back to default root handler.');
+        app.get('/', (c: Context) => c.text('Dinosonic Subsonic Server is running!'));
+    }
+} else {
+    app.get('/', (c: Context) => c.text('Dinosonic Subsonic Server is running!'));
+}
 
 const port = config.port ?? 4100;
 Deno.serve({ port, hostname: '0.0.0.0' }, app.fetch);

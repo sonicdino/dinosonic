@@ -58,6 +58,7 @@ services:
         volumes:
             - /path/to/music:/music:ro
             - /path/to/data:/data
+            #- /path/to/ui:/ui:ro # If you're planning to have a custom frontend at /
         environment:
             DINO_PORT: 4100
             DINO_LOG_LEVEL: INFO
@@ -68,6 +69,8 @@ services:
             DINO_ARTIST_SEPARATORS: ';/'
             DINO_GENRE_SEPARATORS: ';,'
             DINO_DEFAULT_ADMIN_PASSWORD: admin
+            # Optional configuration variable
+            # DINO_UI_FOLDER: /ui
             # Optional Last.fm variables
             # DINO_LASTFM_ENABLED: true
             # DINO_LASTFM_SCROBBLING: true
@@ -84,26 +87,27 @@ services:
 
 #### Environment Variables
 
-| Variable                      | Description                                                                              | Default         |
-| ----------------------------- | ---------------------------------------------------------------------------------------- | --------------- |
-| `DINO_PORT`                   | Server port                                                                              | `4100`          |
-| `DINO_LOG_LEVEL`              | Logging level (`OFF`, `INFO`, `DEBUG`, `WARNING`, `ERROR`)                               | `OFF`           |
-| `DINO_DATA_FOLDER`            | Path for storing metadata, database, and covers.                                         | _Required_      |
-| `DINO_MUSIC_FOLDERS`          | Semicolon-separated list of music folders (e.g., `/music;/more_music`).                  | `[]`            |
-| `DINO_SCAN_ON_START`          | Scan music library on startup (`true`/`false`).                                          | `false`         |
-| `DINO_SCAN_INTERVAL`          | Interval for rescanning (e.g., `1d`, `12h`, `1hr 25m 10s`).                               | `1d`            |
-| `DINO_ARTIST_SEPARATORS`      | Characters used to separate multiple artists in tags (e.g., `';/'`).                      | `';/'`          |
-| `DINO_GENRE_SEPARATORS`       | Characters used to separate multiple genres in tags (e.g., `';,'`).                       | `';,'`          |
-| `DINO_DEFAULT_ADMIN_PASSWORD` | Default password for the 'admin' user. Only used for the first initialization.           | `adminPassword` |
-| `DINO_LASTFM_ENABLED`         | Enable Last.fm metadata fetching (`true`/`false`).                                       | `false`         |
+| Variable                      | Description                                                                                | Default         |
+| ----------------------------- | ------------------------------------------------------------------------------------------ | --------------- |
+| `DINO_PORT`                   | Server port                                                                                | `4100`          |
+| `DINO_LOG_LEVEL`              | Logging level (`OFF`, `INFO`, `DEBUG`, `WARNING`, `ERROR`)                                 | `OFF`           |
+| `DINO_DATA_FOLDER`            | Path for storing metadata, database, and covers.                                           | _Required_      |
+| `DINO_UI_FOLDER`              | Custom UI Frontend folder containing the static HTML, CSS, and JS.                         | None            |
+| `DINO_MUSIC_FOLDERS`          | Semicolon-separated list of music folders (e.g., `/music;/more_music`).                    | `[]`            |
+| `DINO_SCAN_ON_START`          | Scan music library on startup (`true`/`false`).                                            | `false`         |
+| `DINO_SCAN_INTERVAL`          | Interval for rescanning (e.g., `1d`, `12h`, `1hr 25m 10s`).                                | `1d`            |
+| `DINO_ARTIST_SEPARATORS`      | Characters used to separate multiple artists in tags (e.g., `';/'`).                       | `';/'`          |
+| `DINO_GENRE_SEPARATORS`       | Characters used to separate multiple genres in tags (e.g., `';,'`).                        | `';,'`          |
+| `DINO_DEFAULT_ADMIN_PASSWORD` | Default password for the 'admin' user. Only used for the first initialization.             | `adminPassword` |
+| `DINO_LASTFM_ENABLED`         | Enable Last.fm metadata fetching (`true`/`false`).                                         | `false`         |
 | `DINO_LASTFM_SCROBBLING`      | Enable Last.fm scrobbling and loved track sync (`true`/`false`). (Implies Last.fm enabled) | `false`         |
-| `DINO_LASTFM_APIKEY`          | Last.fm API key. \*Required if `DINO_LASTFM_ENABLED` or `DINO_LASTFM_SCROBBLING` is true. | _None\*_        |
-| `DINO_LASTFM_APISECRET`       | Last.fm API secret. \*Required if `DINO_LASTFM_SCROBBLING` is true.                      | _None\*_        |
-| `DINO_SPOTIFY_ENABLED`        | Enable Spotify integration for artist cover art (`true`/`false`).                        | `false`         |
-| `DINO_SPOTIFY_CLIENT_ID`      | Spotify Client ID. \*Required if `DINO_SPOTIFY_ENABLED` is true.                         | _None\*_        |
-| `DINO_SPOTIFY_CLIENT_SECRET`  | Spotify Client Secret. \*Required if `DINO_SPOTIFY_ENABLED` is true.                     | _None\*_        |
-| `DINO_TRANSCODING_ENABLED`    | Enable FFmpeg-based transcoding for streaming and cover art resizing (`true`/`false`).   | `false`         |
-| `DINO_FFMPEG_PATH`            | Path to `ffmpeg` binary.                                                                 | `ffmpeg`        |
+| `DINO_LASTFM_APIKEY`          | Last.fm API key. \*Required if `DINO_LASTFM_ENABLED` or `DINO_LASTFM_SCROBBLING` is true.  | _None\*_        |
+| `DINO_LASTFM_APISECRET`       | Last.fm API secret. \*Required if `DINO_LASTFM_SCROBBLING` is true.                        | _None\*_        |
+| `DINO_SPOTIFY_ENABLED`        | Enable Spotify integration for artist cover art (`true`/`false`).                          | `false`         |
+| `DINO_SPOTIFY_CLIENT_ID`      | Spotify Client ID. \*Required if `DINO_SPOTIFY_ENABLED` is true.                           | _None\*_        |
+| `DINO_SPOTIFY_CLIENT_SECRET`  | Spotify Client Secret. \*Required if `DINO_SPOTIFY_ENABLED` is true.                       | _None\*_        |
+| `DINO_TRANSCODING_ENABLED`    | Enable FFmpeg-based transcoding for streaming and cover art resizing (`true`/`false`).     | `false`         |
+| `DINO_FFMPEG_PATH`            | Path to `ffmpeg` binary.                                                                   | `ffmpeg`        |
 
 ---
 
@@ -170,6 +174,7 @@ If you prefer, you can use a TOML configuration file instead of environment vari
 port = 4100
 log_level = "INFO" # Options: "OFF", "DEBUG", "INFO", "WARNING", "ERROR"
 data_folder = "/path/to/dataDir"
+ui_folder = "/path/to/ui" # If you plan on having a custom frontend
 music_folders = [ "/path/to/music", "/path/to/another/music_folder" ]
 default_admin_password = "yourSecureAdminPassword" # Only used on first run
 scan_on_start = true
@@ -195,42 +200,43 @@ client_secret = "your_spotify_client_secret"
 
 #### Config File Options
 
-| Option                   | Type    | Default         | Description                                                                                        |
-| ------------------------ | ------- | --------------- | -------------------------------------------------------------------------------------------------- |
-| `port`                   | number  | `4100`          | The port on which Dinosonic runs.                                                                  |
-| `log_level`              | string  | `OFF`           | Logging level (e.g., `OFF`, `DEBUG`, `INFO`, `WARNING`, `ERROR`).                                  |
-| `data_folder`            | string  | _Required_      | Path to store metadata, database, and covers.                                                      |
-| `music_folders`          | array   | `[]`            | List of directories containing music.                                                              |
-| `scan_on_start`          | boolean | `false`         | Whether to scan the music library on startup.                                                      |
-| `scan_interval`          | string  | `1d`            | Interval for rescanning (e.g., `1d`, `12h`, `30m`, `1h 30m 10s`).                                    |
-| `artist_separators`      | array   | `[';', '/']`    | Characters used to split multiple artists in tags.                                                 |
-| `genre_separators`       | array   | `[';', ',']`    | Characters used to split multiple genres in tags.                                                  |
-| `default_admin_password` | string  | `adminPassword` | The default password for the 'admin' user. Only needed for the first initialization.               |
+| Option                   | Type    | Default         | Description                                                                          |
+| ------------------------ | ------- | --------------- | ------------------------------------------------------------------------------------ |
+| `port`                   | number  | `4100`          | The port on which Dinosonic runs.                                                    |
+| `log_level`              | string  | `OFF`           | Logging level (e.g., `OFF`, `DEBUG`, `INFO`, `WARNING`, `ERROR`).                    |
+| `data_folder`            | string  | _Required_      | Path to store metadata, database, and covers.                                        |
+| `ui_folder`              | string  | None            | Custom UI Frontend folder containing the static HTML, CSS, and JS.                   |
+| `music_folders`          | array   | `[]`            | List of directories containing music.                                                |
+| `scan_on_start`          | boolean | `false`         | Whether to scan the music library on startup.                                        |
+| `scan_interval`          | string  | `1d`            | Interval for rescanning (e.g., `1d`, `12h`, `30m`, `1h 30m 10s`).                    |
+| `artist_separators`      | array   | `[';', '/']`    | Characters used to split multiple artists in tags.                                   |
+| `genre_separators`       | array   | `[';', ',']`    | Characters used to split multiple genres in tags.                                    |
+| `default_admin_password` | string  | `adminPassword` | The default password for the 'admin' user. Only needed for the first initialization. |
 
 #### Transcoding Options (`[transcoding]`)
 
-| Option        | Type    | Default  | Description                                                                 |
-| ------------- | ------- | -------- | --------------------------------------------------------------------------- |
-| `enabled`     | boolean | `false`  | Whether FFmpeg-based transcoding for streaming is enabled. |
-| `ffmpeg_path` | string  | `ffmpeg` | Path to the FFmpeg executable.                                              |
-<!-- | `enabled`     | boolean | `false`  | Whether FFmpeg-based transcoding for streaming/cover resizing is enabled. | -->
+| Option        | Type      | Default  | Description                                                |
+| ------------- | --------- | -------- | ---------------------------------------------------------- |
+| `enabled`     | boolean   | `false`  | Whether FFmpeg-based transcoding for streaming is enabled. |
+| `ffmpeg_path` | string    | `ffmpeg` | Path to the FFmpeg executable.                             |
+| <!--          | `enabled` | boolean  | `false`                                                    | Whether FFmpeg-based transcoding for streaming/cover resizing is enabled. | --> |
 
 #### Last.fm Options (`[last_fm]`)
 
-| Option              | Type    | Default  | Description                                                                                       |
-| ------------------- | ------- | -------- | ------------------------------------------------------------------------------------------------- |
-| `enabled`           | boolean | `false`  | Enable Last.fm metadata fetching (artist/album info).                                             |
-| `enable_scrobbling` | boolean | `false`  | Enable Last.fm scrobbling and loved track sync. If true, `enabled` is also considered true.        |
-| `api_key`           | string  | _None\*_ | Last.fm API key. \*Required if `enabled` or `enable_scrobbling` is true.                          |
-| `api_secret`        | string  | _None\*_ | Last.fm API secret. \*Required if `enable_scrobbling` is true for OAuth and signed API calls.     |
+| Option              | Type    | Default  | Description                                                                                   |
+| ------------------- | ------- | -------- | --------------------------------------------------------------------------------------------- |
+| `enabled`           | boolean | `false`  | Enable Last.fm metadata fetching (artist/album info).                                         |
+| `enable_scrobbling` | boolean | `false`  | Enable Last.fm scrobbling and loved track sync. If true, `enabled` is also considered true.   |
+| `api_key`           | string  | _None\*_ | Last.fm API key. \*Required if `enabled` or `enable_scrobbling` is true.                      |
+| `api_secret`        | string  | _None\*_ | Last.fm API secret. \*Required if `enable_scrobbling` is true for OAuth and signed API calls. |
 
 #### Spotify Options (`[spotify]`)
 
-| Option          | Type    | Default  | Description                                                                    |
-| --------------- | ------- | -------- | ------------------------------------------------------------------------------ |
-| `enabled`       | boolean | `false`  | Whether Spotify integration for fetching artist images is enabled.             |
-| `client_id`     | string  | _None\*_ | Spotify client ID. \*Required if `enabled` is true.                            |
-| `client_secret` | string  | _None\*_ | Spotify client secret. \*Required if `enabled` is true.                        |
+| Option          | Type    | Default  | Description                                                        |
+| --------------- | ------- | -------- | ------------------------------------------------------------------ |
+| `enabled`       | boolean | `false`  | Whether Spotify integration for fetching artist images is enabled. |
+| `client_id`     | string  | _None\*_ | Spotify client ID. \*Required if `enabled` is true.                |
+| `client_secret` | string  | _None\*_ | Spotify client secret. \*Required if `enabled` is true.            |
 
 </details>
 

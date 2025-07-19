@@ -52,6 +52,7 @@ export const ConfigSchema = z.object({
     port: z.number(),
     log_level: z.string().default('OFF'),
     data_folder: z.string(),
+    ui_folder: z.string().optional(),
     transcoding: ConfigTranscodingOptionSchema.default({ enabled: true, ffmpeg_path: 'ffmpeg' }),
     last_fm: ConfigLastFMOptionSchema.optional(),
     spotify: ConfigSpotifyOptionSchema.optional(),
