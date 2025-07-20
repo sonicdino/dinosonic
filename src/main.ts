@@ -189,7 +189,7 @@ app.use('/public/*', serveStatic({ root: new URL('./client/', import.meta.url).p
 app.route('/rest', restRoutes);
 app.route('/api', apiRoutes);
 
-app.get('/favicon.ico', (c) => c.redirect('/public/favicon.ico'));
+app.get('/favicon.ico', (c: Context) => c.redirect('/public/favicon.ico'));
 app.get('/admin/login', async (c: Context) => {
     try {
         const content = await Deno.readTextFile(new URL('./client/admin/login.html', import.meta.url));

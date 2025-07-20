@@ -523,10 +523,21 @@ async function handleAlbum(albumId: string, trackId: string, albumArtists: Album
     } else logger.error(`Failed to validate new album ${albumId}: ${albumParseResult.error.issues}`);
 }
 
-async function handleArtist(artistString: string): Promise<AlbumID3Artists[]> {
-    const unsortedNames = artistString.split(separatorsToRegex(config.artist_separators));
+async function handleArtist(artistString: string, artistArray: string[] = []): Promise<AlbumID3Artists[]> {
+    const allSources = [];
+
+    if (artistString && artistString !== 'Unknown Artist') allSources.push(artistString);
+    if (artistArray.length) allSources.push(...artistArray);
+
+    const unsortedNames = allSources
+        .flatMap(source => source.split(separatorsToRegex(config.artist_separators)))
+        .map(name => name.trim())
+        .filter(name => name.length > 0);
+
+    const uniqueNames = [...new Set(unsortedNames)];
+
     const sortedArtists: AlbumID3Artists[] = [];
-    for (const name of unsortedNames) {
+    for (const name of uniqueNames) {
         const trimmedName = name.trim();
         if (!trimmedName) continue;
         let id = await getArtistIDByName(trimmedName);
@@ -830,11 +841,11 @@ async function extractMetadata(filePath: string, trackId: string): Promise<Song 
         const existingEntry = await database.get(['tracks', trackId]);
         if (existingEntry.value) {
             const existingSong = SongSchema.safeParse(existingEntry.value);
-            if (existingSong.success && existingSong.data.backend.lastModified === lastModified) return;
+            if (existingSong.success && existingSong.data.backend.lastModified === lastModified && !existingSong.data?.subsonic.path.startsWith("/home/rapid/Music/Let God Sort Em Out [E]/02")) return;
         }
         logger.info(`🔍 Extracting metadata for ${filePath}`);
         const metadata = await parseFile(filePath, { duration: true, skipCovers: false });
-        const artists = await handleArtist(metadata.common.artist || 'Unknown Artist');
+        const artists = await handleArtist(metadata.common.artist || 'Unknown Artist', metadata.common.artists);
         const albumArtists = metadata.common.albumartist ? await handleArtist(metadata.common.albumartist) : artists;
         const albumName = metadata.common.album || 'Unknown Album';
         const albumId = await getAlbumIDByName(albumName, albumArtists) || await generateId();

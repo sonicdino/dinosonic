@@ -71,7 +71,7 @@ async function handleGetArtists(c: Context) {
         }));
 
     return createResponse(c, {
-        artists: { index: sortedIndexList },
+        artists: { ignoredArticles: "", index: sortedIndexList },
     }, 'ok');
 }
 
