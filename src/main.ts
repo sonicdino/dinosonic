@@ -378,11 +378,17 @@ if (config.ui_folder) {
             '*',
             serveStatic({
                 root: config.ui_folder,
-                rewriteRequestPath: (p) => {
-                    if (path.extname(p) === '') {
-                        return 'index.html';
+                rewriteRequestPath: (reqPath) => {
+                    const fullPath = path.join(config.ui_folder ?? '', reqPath);
+                    try {
+                        const stats = Deno.statSync(fullPath);
+                        if (stats.isFile || stats.isDirectory) {
+                            return reqPath;
+                        }
+                    } catch {
+                        // File doesn't exist
                     }
-                    return p;
+                    return 'index.html';
                 },
             }),
         );

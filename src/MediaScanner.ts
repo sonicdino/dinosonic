@@ -841,7 +841,7 @@ async function extractMetadata(filePath: string, trackId: string): Promise<Song 
         const existingEntry = await database.get(['tracks', trackId]);
         if (existingEntry.value) {
             const existingSong = SongSchema.safeParse(existingEntry.value);
-            if (existingSong.success && existingSong.data.backend.lastModified === lastModified && !existingSong.data?.subsonic.path.startsWith("/home/rapid/Music/Let God Sort Em Out [E]/02")) return;
+            if (existingSong.success && existingSong.data.backend.lastModified === lastModified) return;
         }
         logger.info(`🔍 Extracting metadata for ${filePath}`);
         const metadata = await parseFile(filePath, { duration: true, skipCovers: false });

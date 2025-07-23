@@ -8,7 +8,7 @@ import { blue, bold, gray, red, yellow } from '@std/fmt/colors';
 
 const SERVER_NAME = 'Dinosonic';
 const API_VERSION = '1.16.1';
-export const SERVER_VERSION = '0.2.1';
+export const SERVER_VERSION = '0.2.2';
 export let database: Deno.Kv;
 export let config: Config;
 export let logger = log.getLogger();
@@ -428,9 +428,10 @@ export async function createResponse(
     status: 'ok' | 'failed' = 'ok',
     error?: { code: number; message: string },
 ) {
-    const format = await getField(c, 'f') || 'xml';
+    const format = await getField(c, 'f') || 'json';
     const responseData = {
         'subsonic-response': {
+            ...(format.includes('xml') && { '@xmlns': 'http://subsonic.org/restapi' }),
             status,
             version: API_VERSION,
             type: SERVER_NAME,
@@ -441,6 +442,7 @@ export async function createResponse(
         },
     };
 
+    // XML Is broken and the project is literally too done to change things around for a horrible standard. NEVER Use XML.
     if (format.includes('xml')) {
         const xmlResponse = stringify(responseData);
         return c.text(xmlResponse, error ? 400 : 200, { 'Content-Type': 'application/xml' });
@@ -459,13 +461,10 @@ export async function validateAuth(c: Context): Promise<Response | SubsonicUser 
     if (!username) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'u'" });
     if (!client) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'c'" });
 
-    // 🔍 Get user from the database
     const user = await getUserByUsername(username);
     if (!user) return createResponse(c, {}, 'failed', { code: 40, message: ERROR_MESSAGES[40] });
 
-    // ✅ Token Authentication
     if (token && salt) {
-        // Decrypt the stored password to use for token generation
         const originalPassword = await decryptForTokenAuth(user.backend.password);
         const expectedToken = generateTokenHash(originalPassword, salt);
 
@@ -475,14 +474,11 @@ export async function validateAuth(c: Context): Promise<Response | SubsonicUser 
         return { ...user.subsonic, id: user.backend.id };
     }
 
-    // ✅ Basic Authentication
     if (password) {
         let plainPassword = password;
 
-        // Handle encoded passwords
         if (password.startsWith('enc:')) plainPassword = hexToString(password.slice(4));
 
-        // Compare with stored hash
         const originalPassword = await decryptForTokenAuth(user.backend.password);
         if (originalPassword !== plainPassword) {
             return createResponse(c, {}, 'failed', { code: 40, message: ERROR_MESSAGES[40] });
