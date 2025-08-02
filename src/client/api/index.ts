@@ -568,7 +568,7 @@ api.post('/login', async (c: Context) => {
     return c.json({ ok: true, message: 'Login successful' });
 });
 
-api.post('/logout', (c) => {
+api.post('/logout', (c: Context) => {
     deleteCookie(c.res.headers, 'Dinosonic_Auth', { path: '/' });
     return c.json({ message: 'Logged out' });
 });
@@ -576,7 +576,7 @@ api.post('/logout', (c) => {
 // Transcoding Profiles maybe
 
 // last.fm linking
-api.get('/link/lastfm', (c) => {
+api.get('/link/lastfm', (c: Context) => {
     const url = new URL(c.req.url); // Extract base URL dynamically
     const callbackUrl = `${url.origin}/api/callback/lastfm`;
 

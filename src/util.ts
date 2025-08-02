@@ -8,7 +8,7 @@ import { blue, bold, gray, red, yellow } from '@std/fmt/colors';
 
 const SERVER_NAME = 'Dinosonic';
 const API_VERSION = '1.16.1';
-export const SERVER_VERSION = '0.2.2';
+export const SERVER_VERSION = '0.2.5';
 export let database: Deno.Kv;
 export let config: Config;
 export let logger = log.getLogger();
@@ -428,7 +428,7 @@ export async function createResponse(
     status: 'ok' | 'failed' = 'ok',
     error?: { code: number; message: string },
 ) {
-    const format = await getField(c, 'f') || 'json';
+    const format = await getField(c, 'f') || 'xml';
     const responseData = {
         'subsonic-response': {
             ...(format.includes('xml') && { '@xmlns': 'http://subsonic.org/restapi' }),
@@ -445,10 +445,10 @@ export async function createResponse(
     // XML Is broken and the project is literally too done to change things around for a horrible standard. NEVER Use XML.
     if (format.includes('xml')) {
         const xmlResponse = stringify(responseData);
-        return c.text(xmlResponse, error ? 400 : 200, { 'Content-Type': 'application/xml' });
+        return c.text(xmlResponse, 200, { 'Content-Type': 'application/xml' });
     }
 
-    return c.json(responseData, error ? 400 : 200);
+    return c.json(responseData, 200);
 }
 
 export async function validateAuth(c: Context): Promise<Response | SubsonicUser & { id: string }> {

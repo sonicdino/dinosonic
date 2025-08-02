@@ -51,6 +51,7 @@ import createShare from './createShare.ts';
 import getShares from './getShares.ts';
 import deleteShare from './deleteShare.ts';
 import updateShare from './updateShare.ts';
+import jukebox from './jukeboxControl.ts';
 
 restRoutes.route('/', ping);
 restRoutes.route('/', getLicense);
@@ -101,5 +102,6 @@ restRoutes.route('/', createShare);
 restRoutes.route('/', getShares);
 restRoutes.route('/', deleteShare);
 restRoutes.route('/', updateShare);
+restRoutes.route('/', jukebox)
 
 export default restRoutes;
