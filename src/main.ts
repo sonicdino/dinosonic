@@ -15,7 +15,7 @@ import {
 } from './zod.ts';
 import { scanMediaDirectories } from './MediaScanner.ts';
 import { parseArgs } from '@std/cli';
-import { ensureAdminUserExistsHybrid, logger, parseTimeToMs, SERVER_VERSION, setConstants, setupLogger } from './util.ts';
+import { ensureAdminUserExistsHybrid, logger, parseTimeToMs, registerTempDirCleanup, SERVER_VERSION, setConstants, setupLogger } from './util.ts';
 import restRoutes from './client/rest/index.ts';
 import apiRoutes from './client/api/index.ts';
 import { Context, Hono, Next } from '@hono/hono';
@@ -24,6 +24,7 @@ import { serveStatic } from '@hono/hono/deno';
 import { parse } from '@std/toml';
 import * as path from '@std/path';
 import { authMiddleware } from './client/middleware.ts';
+import { ensureDir } from '@std/fs';
 let configFile = Deno.env.get('DINO_CONFIG_FILE');
 let config = null;
 
@@ -120,7 +121,9 @@ if (!config.data_folder.length) throw new Error('Data folder path is empty! chan
 if (!config.default_admin_password.length) throw new Error('Default admin password is empty! are you asking to get hacked?');
 
 await setupLogger(config.log_level);
+await ensureDir(config.data_folder)
 
+registerTempDirCleanup();
 const database = await Deno.openKv(path.join(config.data_folder as string, 'dinosonic.db'));
 setConstants(database, config);
 

@@ -35,7 +35,6 @@ const api = new Hono();
 api.get('/public-stream/:shareId/:itemId', async (c: Context) => {
     const { shareId, itemId } = c.req.param();
 
-    // 1. Validate Share
     const shareEntry = await database.get(['shares', shareId]);
     if (!shareEntry.value) {
         logger.warn(`Public stream attempt: Share ID ${shareId} not found.`);
@@ -50,11 +49,10 @@ api.get('/public-stream/:shareId/:itemId', async (c: Context) => {
 
     if (share.expires && new Date(share.expires) < new Date()) {
         logger.info(`Public stream attempt: Share ID ${shareId} has expired.`);
-        // Optionally delete expired share: await database.delete(['shares', shareId]);
-        return c.text('Share link has expired.', 410); // 410 Gone
+        await database.delete(['shares', shareId]);
+        return c.text('Share link has expired.', 410);
     }
 
-    // 2. Validate itemId against the share content
     let isValidItemForShare = false;
     switch (share.itemType) {
         case 'song':
@@ -85,21 +83,19 @@ api.get('/public-stream/:shareId/:itemId', async (c: Context) => {
             break;
         }
         default:
-            // 'coverArt' shares don't stream audio. Other types not supported for streaming.
             logger.warn(`Public stream attempt: Share ${shareId} is for ${share.itemType}, not streamable audio.`);
             return c.text('This shared item is not streamable audio.', 400);
     }
 
     if (!isValidItemForShare) {
         logger.warn(`Public stream attempt: Item ID ${itemId} is not part of share ${shareId} (type: ${share.itemType}).`);
-        return c.text('Requested item not part of this share.', 403); // Forbidden
+        return c.text('Requested item not part of this share.', 403);
     }
 
-    // 3. Fetch and Stream the Track (if validated)
     const trackEntry = await database.get(['tracks', itemId]);
     if (!trackEntry.value) {
         logger.error(`Public stream: Validated item ID ${itemId} (for share ${shareId}) not found in tracks DB.`);
-        return c.text('Track data not found.', 404); // Should be rare if validation passed
+        return c.text('Track data not found.', 404);
     }
     const parsedTrack = SongSchema.safeParse(trackEntry.value);
     if (!parsedTrack.success) {
@@ -114,7 +110,6 @@ api.get('/public-stream/:shareId/:itemId', async (c: Context) => {
         return c.text('Original track file missing.', 404);
     }
 
-    // Transcoding or direct serving logic (same as your previous version of /api/public-stream/:itemId)
     const transcodingEnabled = config.transcoding?.enabled === true;
     const ffmpegPath = config.transcoding?.ffmpeg_path;
 
@@ -253,13 +248,13 @@ api.get('/public-cover/:itemId', async (c: Context) => {
         }
     }
 
-    const cachePublicCoversDir = path.join(config.data_folder, 'cache', 'public_covers');
-    await ensureDir(cachePublicCoversDir); // Use ensureDir
+    const cachePublicCoversDir = path.join(globalThis.__tmpDir, 'cache', 'public_covers');
+    await ensureDir(cachePublicCoversDir);
 
     const ext = mimeToExtPublic[cover.mimeType.toLowerCase()] || 'jpg';
     const cachedCoverPath = path.join(cachePublicCoversDir, `${itemId}_${size}.${ext}`);
 
-    if (await exists(cachedCoverPath)) { // Use aliased fsExists
+    if (await exists(cachedCoverPath)) {
         try {
             const fileData = await Deno.readFile(cachedCoverPath);
             c.header('Content-Type', cover.mimeType);

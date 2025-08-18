@@ -5,10 +5,11 @@ import { Context } from '@hono/hono';
 import { type Config, Playlist, Share, type SubsonicUser, type User, UserSchema } from './zod.ts';
 import * as log from '@std/log';
 import { blue, bold, gray, red, yellow } from '@std/fmt/colors';
+import { existsSync } from 'node:fs';
 
 const SERVER_NAME = 'Dinosonic';
 const API_VERSION = '1.16.1';
-export const SERVER_VERSION = '0.2.5';
+export const SERVER_VERSION = '0.2.8';
 export let database: Deno.Kv;
 export let config: Config;
 export let logger = log.getLogger();
@@ -124,6 +125,7 @@ export async function generateId(length: number = 30): Promise<string> {
 
 export function setConstants(Database: Deno.Kv, Config: Config) {
     config = Config;
+    getTempDir();
     return database = Database;
 }
 
@@ -176,6 +178,40 @@ export function parseTimeToMs(timeStr: string): number {
         }
         return total;
     }, 0);
+}
+
+export async function getTempDir(): Promise<string> {
+    if (!globalThis.__tmpDir) {
+        globalThis.__tmpDir = await Deno.makeTempDir({ prefix: 'dinosonic_' });
+    }
+    return globalThis.__tmpDir;
+}
+
+declare global {
+    var __tmpDir: string;
+}
+
+export function registerTempDirCleanup() {
+    const cleanup = async () => {
+        if (globalThis.__tmpDir && existsSync(globalThis.__tmpDir)) {
+            try {
+                await Deno.remove(globalThis.__tmpDir, { recursive: true });
+                console.log("Temporary directory cleaned up:", globalThis.__tmpDir);
+            } catch (err) {
+                console.warn("Failed to clean up temp dir:", err);
+            }
+        }
+        Deno.exit();
+    };
+
+    Deno.addSignalListener("SIGINT", cleanup);
+    Deno.addSignalListener("SIGTERM", cleanup);
+    addEventListener("unload", () => {
+        if (globalThis.__tmpDir && existsSync(globalThis.__tmpDir)) {
+            Deno.removeSync(globalThis.__tmpDir, { recursive: true });
+            console.log("Cleanup during unload");
+        }
+    });
 }
 
 export async function getSessionKey(token: string): Promise<string | null> {

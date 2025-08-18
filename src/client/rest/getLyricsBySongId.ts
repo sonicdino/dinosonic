@@ -1,6 +1,10 @@
 import { Context, Hono } from '@hono/hono';
 import { config, createResponse, database, getField, logger, separatorsToRegex, validateAuth } from '../../util.ts';
 import { Song } from '../../zod.ts';
+import * as path from '@std/path';
+import { ensureDir } from '@std/fs/ensure-dir';
+import { exists } from '@std/fs/exists';
+import { musixmatch } from '../../MusixMatch.ts';
 
 const getLyricsBySongId = new Hono();
 
@@ -17,90 +21,159 @@ async function handlegetLyricsBySongId(c: Context) {
 
     const id = await getField(c, 'id');
     if (!id) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });
+
     const track = (await database.get(['tracks', id])).value as Song | null;
     if (!track) return createResponse(c, {}, 'failed', { code: 70, message: 'Song not found' });
-    if (track.backend.lyrics?.length) return createResponse(c, { lyricsList: { structuredLyrics: track.backend.lyrics } }, 'ok');
 
-    const lyrics = await fetchLyrics(track.subsonic.title, track.subsonic.artist, track.subsonic.album, track.subsonic.duration);
+    if (track.backend.lyrics?.length) {
+        return createResponse(c, { lyricsList: { structuredLyrics: track.backend.lyrics } }, 'ok');
+    }
+
+    const cacheLyricsDir = path.join(globalThis.__tmpDir, 'cache', 'lyrics');
+    await ensureDir(cacheLyricsDir);
+    const cachedLyricsPath = path.join(cacheLyricsDir, `${id}.lrc`);
+    let lyrics: string | null = null;
+
+    if (await exists(cachedLyricsPath)) {
+        try {
+            logger.debug(`Serving cached lyrics for song ID: ${id}`);
+            lyrics = await Deno.readTextFile(cachedLyricsPath);
+        } catch (e) {
+            logger.warn(`Failed to read cached lyrics file ${cachedLyricsPath}, fetching from network: ${e}`);
+        }
+    }
+
+    if (!lyrics) {
+        lyrics = await fetchLyrics(track.subsonic.title, track.subsonic.artists.map(artists => artists.name).join(", "), track.subsonic.album, track.subsonic.duration);
+
+        if (lyrics) {
+            try {
+                await Deno.writeTextFile(cachedLyricsPath, lyrics);
+                logger.debug(`Successfully cached lyrics for song ID: ${id}`);
+            } catch (e) {
+                logger.error(`Failed to write lyrics to cache file ${cachedLyricsPath}: ${e}`);
+            }
+        }
+    }
+
     if (!lyrics) return createResponse(c, {}, 'ok');
 
     const lines = lyrics.split('\n').filter((line) => line.trim());
 
-    const Lyrics = lines
-        .filter((line) => line.match(/^\[\d+:\d+\.\d+]/))
+    const syncedLyrics = lines
         .map((line) => {
-            const match = line.match(/^\[(\d+:\d+\.\d+)](.*)/);
+            const match = line.match(/^\[(\d{2,}:\d{2}[.:]\d{2,3})](.*)/);
             return match ? { start: timeToMs(match[1]), value: match[2].trim() } : null;
         })
-        .filter((item) => item !== null);
+        .filter((item): item is { start: number; value: string } => item !== null && item.value !== '');
 
-    const structuredLyrics = [
-        {
+    const unsyncedLyrics = lines
+        .filter(line => !line.startsWith('['))
+        .map(value => ({ value }));
+
+    const structuredLyrics = [];
+    if (syncedLyrics.length > 0) {
+        structuredLyrics.push({
             displayArtist: track.subsonic.artist,
             displayTitle: track.subsonic.title,
             lang: 'xxx',
             synced: true,
-            line: Lyrics,
-        },
-        {
+            line: syncedLyrics,
+        });
+    }
+
+    if (unsyncedLyrics.length > 0) {
+        structuredLyrics.push({
             displayArtist: track.subsonic.artist,
             displayTitle: track.subsonic.title,
             lang: 'xxx',
             synced: false,
-            line: Lyrics.map(({ value }) => ({ value })),
-        },
-    ];
-    return createResponse(c, {
-        lyricsList: { structuredLyrics },
-    }, 'ok');
+            line: unsyncedLyrics,
+        });
+    }
+
+    return createResponse(c, { lyricsList: { structuredLyrics } }, 'ok');
 }
 
-async function fetchLyrics(trackName: string, artistName: string, albumName: string, duration: number): Promise<string | null> {
-    const artistNameGet = artistName.split(separatorsToRegex(config.artist_separators))[0];
-
-    // Get in LRCLIB
-    const lrclibGetUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(trackName)}&artist_name=${
-        encodeURIComponent(artistNameGet)
-    }&album_name=${encodeURIComponent(albumName)}&duration=${encodeURIComponent(duration)}`;
+async function _searchLrclib(artistNameToSearch: string, trackName: string, albumName: string, duration: number): Promise<string | null> {
+    const lrclibGetUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(trackName)}&artist_name=${encodeURIComponent(artistNameToSearch)
+        }&album_name=${encodeURIComponent(albumName)}&duration=${encodeURIComponent(duration)}`;
 
     try {
         const lrclibGetResponse = await fetch(lrclibGetUrl);
         if (lrclibGetResponse.ok) {
             const jsonData = await lrclibGetResponse.json();
-            if (jsonData.syncedLyrics) {
-                logger.debug('Using LRCLIB Get to fetch lyrics');
+            if (jsonData && jsonData.syncedLyrics) {
+                logger.debug(`Found lyrics using LRCLIB Get with artist: "${artistNameToSearch}"`);
                 return jsonData.syncedLyrics;
             }
         }
     } catch (error) {
-        logger.error('Error fetching from LRCLIB Get:', error);
+        logger.error(`Error fetching from LRCLIB Get with artist "${artistNameToSearch}":`, error);
     }
 
-    // Search in LRCLIB
-    const lrclibSearchUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(`${artistName} ${trackName}`)}`;
+    const lrclibSearchUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(`${artistNameToSearch} ${trackName}`)}`;
 
     try {
         const lrclibSearchResponse = await fetch(lrclibSearchUrl);
         if (lrclibSearchResponse.ok) {
             const jsonData = await lrclibSearchResponse.json();
-
             if (jsonData && jsonData.length > 0) {
-                for (const song of jsonData) {
-                    if (
-                        (song.name.toLowerCase() === trackName.toLowerCase() || song.trackName.toLowerCase() === trackName.toLowerCase()) &&
-                        song.artistName.toLowerCase() === artistName.toLowerCase() &&
-                        song.syncedLyrics
-                    ) {
-                        logger.debug('Using LRCLIB Search');
-                        return song.syncedLyrics;
-                    }
+                // deno-lint-ignore no-explicit-any
+                const bestMatch = jsonData.find((song: any) =>
+                    song.trackName.toLowerCase() === trackName.toLowerCase() &&
+                    song.artistName.toLowerCase() === artistNameToSearch.toLowerCase() &&
+                    song.syncedLyrics
+                );
+
+                if (bestMatch) {
+                    logger.debug(`Found lyrics using LRCLIB Search with artist: "${artistNameToSearch}"`);
+                    return bestMatch.syncedLyrics;
                 }
             }
         }
     } catch (error) {
-        logger.error('Error fetching from LRCLIB Search:', error);
+        logger.error(`Error fetching from LRCLIB Search with artist "${artistNameToSearch}":`, error);
     }
 
+    return null;
+}
+
+async function fetchLyrics(trackName: string, artistName: string, albumName: string, duration: number): Promise<string | null> {
+    const fullArtistString = artistName.trim();
+    const mainArtist = artistName.split(separatorsToRegex(config.artist_separators))[0].trim();
+
+    logger.debug(`Attempting to fetch lyrics with full artist string: "${fullArtistString}"`);
+    let lyrics = await _searchLrclib(fullArtistString, trackName, albumName, duration);
+    if (lyrics) {
+        return lyrics;
+    }
+
+    if (mainArtist.toLowerCase() !== fullArtistString.toLowerCase()) {
+        logger.debug(`Fetching with full artist string failed, retrying with main artist: "${mainArtist}"`);
+        lyrics = await _searchLrclib(mainArtist, trackName, albumName, duration);
+        if (lyrics) {
+            return lyrics;
+        }
+    }
+
+    // MusixMatch is last because LRClib is better than MusixMatch.
+    try {
+        const searchResults = await musixmatch.search(trackName, artistName);
+        if (searchResults.length > 0) {
+            logger.debug(`Found ${searchResults.length} potential matches on Musixmatch.`);
+            const trackId = searchResults[0].track_id;
+            const lyrics = await musixmatch.getLrcById(trackId.toString());
+            if (lyrics) {
+                logger.debug(`Successfully fetched lyrics from Musixmatch for track ID: ${trackId}`);
+                return lyrics;
+            }
+        }
+    } catch (error) {
+        logger.error(`An error occurred while fetching lyrics from Musixmatch: ${error}`);
+    }
+
+    logger.debug(`No lyrics found for "${trackName}" by "${artistName}" after all attempts.`);
     return null;
 }
 
