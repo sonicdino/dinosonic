@@ -1,5 +1,5 @@
 import { Context, Hono } from '@hono/hono';
-import { config, createResponse, database, getField, logger, separatorsToRegex, validateAuth } from '../../util.ts';
+import { createResponse, database, getField, logger, validateAuth } from '../../util.ts';
 import { Song } from '../../zod.ts';
 import * as path from '@std/path';
 import { ensureDir } from '@std/fs/ensure-dir';
@@ -44,7 +44,7 @@ async function handlegetLyricsBySongId(c: Context) {
     }
 
     if (!lyrics) {
-        lyrics = await fetchLyrics(track.subsonic.title, track.subsonic.artists.map(artists => artists.name).join(", "), track.subsonic.album, track.subsonic.duration);
+        lyrics = await fetchLyrics(track.subsonic.title, track.subsonic.artists.map(artists => artists.name).join(", "), track.subsonic.artist, track.subsonic.album, track.subsonic.duration);
 
         if (lyrics) {
             try {
@@ -98,6 +98,7 @@ async function handlegetLyricsBySongId(c: Context) {
 async function _searchLrclib(artistNameToSearch: string, trackName: string, albumName: string, duration: number): Promise<string | null> {
     const lrclibGetUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(trackName)}&artist_name=${encodeURIComponent(artistNameToSearch)
         }&album_name=${encodeURIComponent(albumName)}&duration=${encodeURIComponent(duration)}`;
+    console.log(lrclibGetUrl)
 
     try {
         const lrclibGetResponse = await fetch(lrclibGetUrl);
@@ -139,9 +140,9 @@ async function _searchLrclib(artistNameToSearch: string, trackName: string, albu
     return null;
 }
 
-async function fetchLyrics(trackName: string, artistName: string, albumName: string, duration: number): Promise<string | null> {
-    const fullArtistString = artistName.trim();
-    const mainArtist = artistName.split(separatorsToRegex(config.artist_separators))[0].trim();
+async function fetchLyrics(trackName: string, artistNames: string, artistName: string, albumName: string, duration: number): Promise<string | null> {
+    const fullArtistString = artistNames.trim();
+    const mainArtist = artistName.trim();
 
     logger.debug(`Attempting to fetch lyrics with full artist string: "${fullArtistString}"`);
     let lyrics = await _searchLrclib(fullArtistString, trackName, albumName, duration);
@@ -160,15 +161,28 @@ async function fetchLyrics(trackName: string, artistName: string, albumName: str
     // MusixMatch is always last because even with the
     // duration defined, Lyrics can still be a little bit offset.
     try {
-        const lyrics = await musixmatch.getLyrics({
+        // Trying with Multi artists
+        let lyrics = await musixmatch.getLyrics({
             title: trackName,
-            artist: artistName,
+            artist: fullArtistString,
             album: albumName,
             duration: duration,
         });
 
         if (lyrics) {
-            logger.debug(`Successfully fetched lyrics from Musixmatch.`);
+            logger.debug(`Successfully fetched lyrics from Musixmatch with full artist string.`);
+            return lyrics;
+        }
+        // Fallback to one artist
+        lyrics = await musixmatch.getLyrics({
+            title: trackName,
+            artist: mainArtist,
+            album: albumName,
+            duration: duration,
+        });
+
+        if (lyrics) {
+            logger.debug(`Successfully fetched lyrics from Musixmatch with single artist string.`);
             return lyrics;
         }
     } catch (error) {

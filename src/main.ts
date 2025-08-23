@@ -100,6 +100,12 @@ if (configFile) {
         };
     }
 
+    if (Deno.env.get('DINO_LISTENBRAINZ_SCROBBLING')) {
+        conf.listenbrainz = {
+            enable_scrobbling: Deno.env.get('DINO_LISTENBRAINZ_SCROBBLING') === 'true'
+        }
+    }
+
     if (Deno.env.get('DINO_TRANSCODING_ENABLED')) {
         conf.transcoding = {
             enabled: typeof Deno.env.get('DINO_TRANSCODING_ENABLED') === 'string' ? Deno.env.get('DINO_TRANSCODING_ENABLED') === 'true' : true,
