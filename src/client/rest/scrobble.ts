@@ -2,6 +2,7 @@ import { Context, Hono } from '@hono/hono';
 import { checkInternetConnection, createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
 import { nowPlaying, Song, userData, userDataSchema } from '../../zod.ts';
 import { scrobble as LastFMScrobble } from '../../LastFM.ts';
+import { scrobble as ListenBrainzScrobble } from '../../ListenBrainz.ts';
 
 const scrobble = new Hono();
 
@@ -74,7 +75,7 @@ async function handleScrobble(c: Context) {
 
     if (internetAccess) {
         await LastFMScrobble(user, submission, time, track);
-        // TODO: ListenBrainz Scrobbling
+        await ListenBrainzScrobble(user, submission, time, track);
     }
 
     return createResponse(c, {}, 'ok');

@@ -17,7 +17,7 @@ async function handlesavePlayQueue(c: Context) {
     const user = await getUserByUsername(isValidated.username);
     if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
 
-    if (!ids && !ids?.length) {
+    if (!ids || !ids.length) {
         await database.delete(['playQueue', user.backend.id]);
         return createResponse(c, {}, 'ok');
     }

@@ -20,6 +20,7 @@ async function handleUpdateUser(c: Context) {
     const downloadRole = toBoolean(await getField(c, 'downloadRole'));
     const playlistRole = toBoolean(await getField(c, 'playlistRole'));
     const coverArtRole = toBoolean(await getField(c, 'coverArtRole'));
+    const jukeboxRole = toBoolean(await getField(c, 'jukeboxRole'));
     const shareRole = toBoolean(await getField(c, 'shareRole'));
     const scrobblingEnabled = toBoolean(await getField(c, 'scrobblingEnabled'));
 
@@ -45,6 +46,7 @@ async function handleUpdateUser(c: Context) {
             downloadRole: downloadRole ?? existingUser.subsonic.downloadRole,
             playlistRole: playlistRole ?? existingUser.subsonic.playlistRole,
             coverArtRole: coverArtRole ?? existingUser.subsonic.coverArtRole,
+            jukeboxRole: jukeboxRole ?? existingUser.subsonic.jukeboxRole,
             streamRole: streamRole ?? existingUser.subsonic.streamRole,
             shareRole: shareRole ?? existingUser.subsonic.shareRole,
             scrobblingEnabled: scrobblingEnabled ?? existingUser.subsonic.scrobblingEnabled,

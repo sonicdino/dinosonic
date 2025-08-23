@@ -157,17 +157,19 @@ async function fetchLyrics(trackName: string, artistName: string, albumName: str
         }
     }
 
-    // MusixMatch is last because LRClib is better than MusixMatch.
+    // MusixMatch is always last because even with the
+    // duration defined, Lyrics can still be a little bit offset.
     try {
-        const searchResults = await musixmatch.search(trackName, artistName);
-        if (searchResults.length > 0) {
-            logger.debug(`Found ${searchResults.length} potential matches on Musixmatch.`);
-            const trackId = searchResults[0].track_id;
-            const lyrics = await musixmatch.getLrcById(trackId.toString());
-            if (lyrics) {
-                logger.debug(`Successfully fetched lyrics from Musixmatch for track ID: ${trackId}`);
-                return lyrics;
-            }
+        const lyrics = await musixmatch.getLyrics({
+            title: trackName,
+            artist: artistName,
+            album: albumName,
+            duration: duration,
+        });
+
+        if (lyrics) {
+            logger.debug(`Successfully fetched lyrics from Musixmatch.`);
+            return lyrics;
         }
     } catch (error) {
         logger.error(`An error occurred while fetching lyrics from Musixmatch: ${error}`);

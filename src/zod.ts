@@ -36,6 +36,10 @@ export const ConfigLastFMOptionSchema = z.object({
     path: ['api_key', 'api_secret'],
 });
 
+export const ConfigListenBrainzOptionSchema = z.object({
+    enable_scrobbling: z.boolean().default(false),
+})
+
 export const ConfigSpotifyOptionSchema = z.object({
     enabled: z.boolean().default(false),
     client_id: z.string().optional(),
@@ -55,6 +59,7 @@ export const ConfigSchema = z.object({
     ui_folder: z.string().optional(),
     transcoding: ConfigTranscodingOptionSchema.default({ enabled: true, ffmpeg_path: 'ffmpeg' }),
     last_fm: ConfigLastFMOptionSchema.optional(),
+    listenbrainz: ConfigListenBrainzOptionSchema.optional(),
     spotify: ConfigSpotifyOptionSchema.optional(),
     music_folders: z.array(z.string()).default([]),
     scan_on_start: z.boolean().default(false),
@@ -288,7 +293,7 @@ export const BackendUserSchema = z.object({
     username: z.string(),
     password: z.string(),
     lastFMSessionKey: z.string().optional(),
-    listenbrainzToken: z.string().optional(),
+    listenBrainzToken: z.string().optional(),
 });
 
 export const UserSchema = z.object({

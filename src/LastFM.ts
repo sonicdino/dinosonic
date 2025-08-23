@@ -1,21 +1,17 @@
-// Here houses LastFM related functions, srobbling, metadata retrieval etc.
-
-import { config, logger, signParams } from './util.ts'; // Added logger
+import { config, logger, signParams } from './util.ts';
 import { Song, User } from './zod.ts';
 
 export async function getArtistInfo(artist: string) {
-    const reqUrl = `https://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist=${
-        encodeURIComponent(artist)
-    }&api_key=${config.last_fm?.api_key}&format=json`;
+    const reqUrl = `https://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist=${encodeURIComponent(artist)
+        }&api_key=${config.last_fm?.api_key}&format=json`;
     const req = await fetch(reqUrl);
     if (!req.ok) return;
     return req.json();
 }
 
 export async function getAlbumInfo(title: string, artist: string) {
-    const reqUrl = `https://ws.audioscrobbler.com/2.0/?method=album.getinfo&artist=${
-        encodeURIComponent(artist)
-    }&album=${title}&api_key=${config.last_fm?.api_key}&format=json`;
+    const reqUrl = `https://ws.audioscrobbler.com/2.0/?method=album.getinfo&artist=${encodeURIComponent(artist)
+        }&album=${title}&api_key=${config.last_fm?.api_key}&format=json`;
     const req = await fetch(reqUrl);
     if (!req.ok) return;
     const json = await req.json();
@@ -23,9 +19,8 @@ export async function getAlbumInfo(title: string, artist: string) {
 }
 
 export async function getTopTracks(artist: string, count = 50, mbid?: string) {
-    const reqUrl = `https://ws.audioscrobbler.com/2.0/?method=artist.gettoptracks&${
-        mbid ? `mbid=${encodeURIComponent(mbid)}` : `artist=${encodeURIComponent(artist)}`
-    }&count=${count}&api_key=${config.last_fm?.api_key}&format=json`;
+    const reqUrl = `https://ws.audioscrobbler.com/2.0/?method=artist.gettoptracks&${mbid ? `mbid=${encodeURIComponent(mbid)}` : `artist=${encodeURIComponent(artist)}`
+        }&count=${count}&api_key=${config.last_fm?.api_key}&format=json`;
     const req = await fetch(reqUrl);
     if (!req.ok) return;
     const json = await req.json();
@@ -51,20 +46,16 @@ export async function getUsernameFromSessionKey(sessionKey: string): Promise<str
         return null;
     }
 
-    // Construct URL parameters for user.getInfo authenticated call
     const params = new URLSearchParams({
         method: 'user.getInfo',
         api_key: config.last_fm.api_key,
-        sk: sessionKey, // Provide the session key
+        sk: sessionKey,
         format: 'json',
-        // No 'user' parameter - defaults to the authenticated user (owner of sk)
     });
 
-    // Calculate and append the API signature (required when using 'sk')
     params.append('api_sig', signParams(params, config.last_fm.api_secret));
 
     try {
-        // Make GET request
         const reqUrl = `https://ws.audioscrobbler.com/2.0/?${params.toString()}`;
         const response = await fetch(reqUrl);
 
@@ -81,7 +72,6 @@ export async function getUsernameFromSessionKey(sessionKey: string): Promise<str
         const data = await response.json();
 
         if (data.error) {
-            // Specific error code for invalid session key is 9
             if (data.error === 9) {
                 logger.warn(`Last.fm: Provided session key is invalid or expired.`);
             } else {
@@ -90,11 +80,10 @@ export async function getUsernameFromSessionKey(sessionKey: string): Promise<str
             return null;
         }
 
-        // Extract username from the response: { user: { name: "...", ... } }
         const username = data?.user?.name;
         if (!username) {
             logger.error(`Last.fm: Could not extract username from user.getInfo response for session key.`);
-            console.debug('Last.fm getUsernameFromSessionKey response:', data); // Log response for debugging
+            console.debug('Last.fm getUsernameFromSessionKey response:', data);
             return null;
         }
 
@@ -133,8 +122,8 @@ export async function getUserLovedTracksMap(username: string): Promise<Map<strin
 
     const lovedTracksMap = new Map<string, number>();
     let currentPage = 1;
-    const limit = 200; // Max allowed by API is typically 200-1000, 200 is safe.
-    let totalPages = 1; // Assume at least one page initially
+    const limit = 200;
+    let totalPages = 1;
 
     logger.info(`Last.fm: Fetching loved tracks for user "${username}"...`);
 
@@ -158,32 +147,29 @@ export async function getUserLovedTracksMap(username: string): Promise<Map<strin
                     const errorData = await response.json();
                     errorMsg = errorData.message || errorMsg;
                     // deno-lint-ignore no-empty
-                } catch (_) {}
+                } catch (_) { }
                 logger.error(
                     `Last.fm: Failed to fetch loved tracks page ${currentPage} for "${username}". Status: ${response.status}, Error: ${errorMsg}`,
                 );
-                return null; // Abort on error
+                return null;
             }
 
             const data = await response.json();
 
             if (data.error) {
                 logger.error(`Last.fm: API error fetching loved tracks page ${currentPage} for "${username}". Error ${data.error}: ${data.message}`);
-                return null; // Abort on API error
+                return null;
             }
 
             if (!data.lovedtracks || !data.lovedtracks.track) {
                 logger.warn(`Last.fm: Unexpected response structure for loved tracks page ${currentPage} for "${username}".`);
-                // If it's the first page and no tracks found, it's valid, return empty map
                 if (currentPage === 1 && (!data.lovedtracks['@attr'] || parseInt(data.lovedtracks['@attr'].total || '0') === 0)) {
                     logger.info(`Last.fm: User "${username}" has no loved tracks.`);
                     return lovedTracksMap; // Return empty map
                 }
-                // Otherwise, consider it an error for subsequent pages or unexpected format
                 return null;
             }
 
-            // Update total pages from the first page response
             if (currentPage === 1) {
                 totalPages = parseInt(data.lovedtracks['@attr']?.totalPages || '1');
                 const totalTracks = parseInt(data.lovedtracks['@attr']?.total || '0');
@@ -197,7 +183,6 @@ export async function getUserLovedTracksMap(username: string): Promise<Map<strin
                     const key = createTrackMapKey(track.artist.name, track.name);
                     const timestampUTS = parseInt(track.date.uts);
                     if (!isNaN(timestampUTS)) {
-                        // If duplicate found, keep the newest timestamp (unlikely but possible)
                         if (!lovedTracksMap.has(key) || timestampUTS > (lovedTracksMap.get(key) ?? 0)) {
                             lovedTracksMap.set(key, timestampUTS);
                         }
@@ -230,7 +215,6 @@ export async function scrobble(user: User, submission: boolean, time: Date, trac
                 format: 'json',
             });
 
-            // Append API signature
             sig.append('api_sig', signParams(sig, config.last_fm.api_secret));
 
             try {
@@ -242,10 +226,8 @@ export async function scrobble(user: User, submission: boolean, time: Date, trac
 
                 const data = await response.json();
                 if (!response.ok || data.error) {
-                    // Added more detailed logging, similar to new functions
                     logger.error(
-                        `Last.fm: Failed to ${
-                            submission ? 'scrobble' : 'updateNowPlaying'
+                        `Last.fm: Failed to ${submission ? 'scrobble' : 'updateNowPlaying'
                         } for track ${track.subsonic.artist} - ${track.subsonic.title}. Error: ${data.message || response.statusText}`,
                     );
                     return false;
@@ -253,15 +235,14 @@ export async function scrobble(user: User, submission: boolean, time: Date, trac
                 return true;
             } catch (error) {
                 logger.error(
-                    `Last.fm: Exception during ${
-                        submission ? 'scrobble' : 'updateNowPlaying'
+                    `Last.fm: Exception during ${submission ? 'scrobble' : 'updateNowPlaying'
                     } for track ${track.subsonic.artist} - ${track.subsonic.title}: ${error}`,
                 );
                 return false;
             }
         }
     }
-    return false; // Added return false if initial conditions not met
+    return false;
 }
 
 /**

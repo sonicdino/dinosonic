@@ -8,12 +8,11 @@ interface TokenData {
     expiration_time: number;
 }
 
-export interface MusixmatchTrack {
-    track_id: number;
+export interface LyricSearchInfo {
     title: string;
     artist: string;
-    album: string;
-    image: string;
+    album?: string;
+    duration?: number;
 }
 
 class MusixmatchProvider {
@@ -46,6 +45,11 @@ class MusixmatchProvider {
                 headers: this.sessionHeaders,
             });
 
+            const setCookie = response.headers.get('set-cookie');
+            if (setCookie) {
+                this.sessionHeaders.cookie = setCookie;
+            }
+
             if (response.ok) {
                 return response;
             }
@@ -58,7 +62,7 @@ class MusixmatchProvider {
     }
 
     private async _getToken(): Promise<void> {
-        const tokenPath = path.join(globalThis.__tmpDir, 'token.json');
+        const tokenPath = path.join(globalThis.__tmpDir, 'musixmatch_token.json');
         const currentTime = Math.floor(Date.now() / 1000);
 
         if (await exists(tokenPath)) {
@@ -95,61 +99,44 @@ class MusixmatchProvider {
         await Deno.writeTextFile(tokenPath, JSON.stringify(tokenData));
     }
 
-    async getLrcById(trackId: string): Promise<string | null> {
-        const response = await this._get('track.subtitle.get', [['track_id', trackId], ['subtitle_format', 'lrc']]);
+    /**
+     * Searches for lyrics using detailed track information for a more accurate match.
+     * @param info - The track information.
+     * @returns The LRC-formatted lyrics string, or null if not found.
+     */
+    async getLyrics(info: LyricSearchInfo): Promise<string | null> {
+        const query: [string, string][] = [
+            ['q_track', info.title],
+            ['q_artist', info.artist],
+            ['namespace', 'lyrics_richsynched'],
+            ['subtitle_format', 'lrc'],
+        ];
+
+        if (info.album) {
+            query.push(['q_album', info.album]);
+        }
+        if (info.duration) {
+            query.push(['q_duration', Math.round(info.duration).toString()]);
+        }
+
+        const response = await this._get('macro.subtitles.get', query);
 
         if (!response) {
             return null;
         }
 
         try {
-            const res = await response.json();
-            const body = res.message.body;
+            const data = await response.json();
 
-            if (!body) {
-                return null;
+            const lrcBody = data.message?.body?.macro_calls?.['track.subtitles.get']?.message?.body?.subtitle_list?.[0]?.subtitle?.subtitle_body;
+
+            if (lrcBody && lrcBody.trim() !== '') {
+                return lrcBody;
             }
-            return body.subtitle?.subtitle_body;
-        } catch (e) {
-            console.error(`Error parsing getLrcById response: ${e}`);
             return null;
-        }
-    }
-
-    async search(title: string, artist: string): Promise<MusixmatchTrack[]> {
-        const response = await this._get('track.search', [
-            ['q_track', title],
-            ['q_artist', artist],
-            ['page_size', '5'],
-            ['page', '1'],
-            ['f_has_lyrics', '1'],
-            ['s_track_rating', 'desc'],
-            ['quorum_factor', '1.0'],
-        ]);
-
-        if (!response) {
-            return [];
-        }
-
-        try {
-            const body = (await response.json()).message.body;
-            const tracks = body?.track_list;
-
-            if (!tracks) {
-                return [];
-            }
-
-            // deno-lint-ignore no-explicit-any
-            return tracks.map((t: any) => ({
-                track_id: t.track.track_id,
-                title: t.track.track_name,
-                artist: t.track.artist_name,
-                album: t.track.album_name,
-                image: t.track.album_coverart_100x100,
-            }));
         } catch (e) {
-            console.error(`Error parsing search response: ${e}`);
-            return [];
+            console.error(`Error parsing getLyrics response: ${e}`);
+            return null;
         }
     }
 }

@@ -1,411 +1,514 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Admin Panel - Dinosonic</title>
-        <script src="https://cdn.tailwindcss.com"></script>
-        <style>
-            @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
 
-            @font-face {
-                font-family: 'Dinofiles';
-                src: url('/public/Dinofiles-font.ttf') format('truetype');
-                font-weight: normal;
-                font-style: normal;
-            }
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Dinosonic</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
 
-            body {
-                font-family: 'VT323', monospace;
-                background-color: #000;
-                color: #fff;
-            }
+        @font-face {
+            font-family: 'Dinofiles';
+            src: url('/public/Dinofiles-font.ttf') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+        }
 
-            .brand-title {
-                font-family: 'Dinofiles', monospace;
-            }
+        body {
+            font-family: 'VT323', monospace;
+            background-color: #000;
+            color: #fff;
+        }
 
-            .footer {
-                color: #999;
-                border-top: 1px solid #999;
-            }
+        .brand-title {
+            font-family: 'Dinofiles', monospace;
+        }
 
-            .social-link {
-                color: #999;
-                transition: all 0.2s ease;
-            }
+        .footer {
+            color: #999;
+            border-top: 1px solid #999;
+        }
 
-            .social-link:hover {
-                text-decoration: underline;
-            }
+        .social-link {
+            color: #999;
+            transition: all 0.2s ease;
+        }
 
-            /* Button hover effects */
-            .hover-effect {
-                transition: all 0.2s ease-in-out;
-            }
+        .social-link:hover {
+            text-decoration: underline;
+        }
 
-            .hover-effect:hover {
-                transform: translateY(-2px);
-                filter: brightness(120%);
-                box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
-            }
+        /* Button hover effects */
+        .hover-effect {
+            transition: all 0.2s ease-in-out;
+        }
 
-            /* Container spacing fix */
-            .dashboard-container {
-                margin-top: 0;
-                margin-bottom: 0;
-            }
+        .hover-effect:hover {
+            transform: translateY(-2px);
+            filter: brightness(120%);
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+        }
 
-            .dashboard-container + .dashboard-container {
-                margin-top: 1.5rem;
-            }
-        </style>
-        <script>
-            async function fetchVersion() {
-                try {
-                    const response = await fetch('/api/version');
-                    const data = await response.json();
-                    document.getElementById('version').innerText = `Version ${data.version}`;
-                } catch (error) {
-                    console.error('Error fetching version:', error);
-                }
-            }
-            window.onload = fetchVersion;
-        </script>
-    </head>
+        /* Container spacing fix */
+        .dashboard-container {
+            margin-top: 0;
+            margin-bottom: 0;
+        }
 
-    <body class="bg-black min-h-screen flex flex-col">
-        <!-- Banner with branding -->
-        <div class="w-full py-6 px-4 mb-8">
-            <div class="max-w-4xl mx-auto flex items-center justify-between">
-                <div>
-                    <h1 class="brand-title text-5xl mb-1">DINOSONIC</h1>
-                    <p class="text-blue-300">
-                        A fast, lightweight music streaming server built with Deno, inspired by Subsonic.
-                    </p>
-                </div>
-                <div class="text-right">
-                    <div class="text-xs text-blue-400 mb-1">ADMIN PANEL</div>
-                    <div id="server-status" class="text-green-400">Server Online</div>
-                </div>
+        .dashboard-container+.dashboard-container {
+            margin-top: 1.5rem;
+        }
+    </style>
+    <script>
+        async function fetchVersion() {
+            try {
+                const response = await fetch('/api/version');
+                const data = await response.json();
+                document.getElementById('version').innerText = `Version ${data.version}`;
+            } catch (error) {
+                console.error('Error fetching version:', error);
+            }
+        }
+        window.onload = fetchVersion;
+    </script>
+</head>
+
+<body class="bg-black min-h-screen flex flex-col">
+    <!-- Banner with branding -->
+    <div class="w-full py-6 px-4 mb-8">
+        <div class="max-w-4xl mx-auto flex items-center justify-between">
+            <div>
+                <h1 class="brand-title text-5xl mb-1">DINOSONIC</h1>
+                <p class="text-blue-300">
+                    A fast, lightweight music streaming server built with Deno, inspired by Subsonic.
+                </p>
+            </div>
+            <div class="text-right">
+                <div class="text-xs text-blue-400 mb-1">ADMIN PANEL</div>
+                <div id="server-status" class="text-green-400">Server Online</div>
             </div>
         </div>
+    </div>
 
-        <div class="flex-grow flex flex-col items-center px-8">
-            <h1 class="text-4xl mb-6">Admin Panel</h1>
+    <div class="flex-grow flex flex-col items-center px-8">
+        <h1 class="text-4xl mb-6">Admin Panel</h1>
 
-            <!-- User Management (Visible to Admins Only) -->
-            <div id="user-management" class="w-full max-w-2xl border border-white p-6 dashboard-container hidden">
-                <h2 class="text-2xl mb-4">User Management</h2>
+        <!-- User Management (Visible to Admins Only) -->
+        <div id="user-management" class="w-full max-w-2xl border border-white p-6 dashboard-container hidden">
+            <h2 class="text-2xl mb-4">User Management</h2>
 
-                <!-- Create User (Admin Only) -->
-                <div id="admin-controls" class="mb-6 hidden">
-                    <h3 class="text-xl mb-2">Create User</h3>
-                    <input id="new-username" type="text" placeholder="Username" class="w-full p-2 mb-2 bg-inherit border border-white">
-                    <input id="new-password" type="password" placeholder="Password" class="w-full p-2 mb-2 bg-inherit border border-white">
-                    <button id="create-user" class="w-full bg-green-700 p-2 uppercase hover-effect">
-                        Create User
-                    </button>
-                </div>
-
-                <!-- Users List -->
-                <ul id="users-container" class="list-none"></ul>
-            </div>
-
-            <!-- Scrobbling Settings -->
-            <div class="w-full max-w-2xl border border-white p-6 dashboard-container">
-                <h2 class="text-2xl mb-4">LastFM Scrobbling</h2>
-                <p>Status: <span id="lastfm-text" class="text-red-500">Not Linked</span></p>
-                <button id="lastfm-button" class="w-full bg-white text-black p-2 uppercase mt-4 hover-effect">
-                    Link LastFM
+            <!-- Create User (Admin Only) -->
+            <div id="admin-controls" class="mb-6 hidden">
+                <h3 class="text-xl mb-2">Create User</h3>
+                <input id="new-username" type="text" placeholder="Username"
+                    class="w-full p-2 mb-2 bg-inherit border border-white">
+                <input id="new-password" type="password" placeholder="Password"
+                    class="w-full p-2 mb-2 bg-inherit border border-white">
+                <button id="create-user" class="w-full bg-green-700 p-2 uppercase hover-effect">
+                    Create User
                 </button>
             </div>
 
-            <div class="w-full max-w-2xl border border-white p-6 dashboard-container">
-                <h2 class="text-2xl mb-4">ListenBrainz Scrobbling (Coming soon)</h2>
-                <p>Status: <span id="listenbrainz-text" class="text-red-500">Not Linked</span></p>
-                <button id="listenbrainz-button" class="w-full bg-white text-black p-2 uppercase mt-4 hover-effect" disabled>
-                    Link ListenBrainz
-                </button>
-            </div>
-
-            <!-- Logout -->
-            <div class="w-full max-w-2xl border border-white p-6 dashboard-container">
-                <button id="logout-button" class="w-full bg-red-500 p-2 uppercase hover-effect">Logout</button>
-            </div>
+            <!-- Users List -->
+            <ul id="users-container" class="list-none"></ul>
         </div>
 
-        <!-- Footer -->
-        <footer class="footer w-full py-4 px-8 mt-12">
-            <div class="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-center">
-                <div class="mb-4 md:mb-0">
-                    <span>&copy; 2025 Dinosonic | <span id="version">Version 0.0.0</span></span>
-                </div>
-                <div class="flex space-x-6">
-                    <a href="https://github.com/sonicdino/dinosonic" class="social-link" target="_blank">GitHub</a>
-                    <!-- <a href="https://dinosonic.fuge.dev" class="social-link" target="_blank">Website</a>
+        <!-- Scrobbling Settings -->
+        <div class="w-full max-w-2xl border border-white p-6 dashboard-container">
+            <h2 class="text-2xl mb-4">LastFM Scrobbling</h2>
+            <p>Status: <span id="lastfm-text" class="text-red-500">Not Linked</span></p>
+            <button id="lastfm-button" class="w-full bg-white text-black p-2 uppercase mt-4 hover-effect">
+                Link LastFM
+            </button>
+        </div>
+
+        <div class="w-full max-w-2xl border border-white p-6 dashboard-container">
+            <h2 class="text-2xl mb-4">ListenBrainz Scrobbling</h2>
+            <p>Status: <span id="listenbrainz-text" class="text-red-500">Not Linked</span></p>
+
+            <!-- This container will hold the input field and will be shown/hidden dynamically -->
+            <div id="listenbrainz-input-container" class="hidden mt-4">
+                <p class="text-sm mb-2">
+                    Get your user token from your
+                    <a href="https://listenbrainz.org/profile/" target="_blank"
+                        class="underline hover:text-blue-300">ListenBrainz profile</a>.
+                </p>
+                <input id="listenbrainz-token-input" type="text" placeholder="Enter your ListenBrainz user token"
+                    class="w-full p-2 mb-2 bg-inherit border border-white">
+            </div>
+
+            <!-- A single, dynamic button that changes its text and function -->
+            <button id="listenbrainz-button" class="w-full bg-white text-black p-2 uppercase mt-4 hover-effect">
+                Link ListenBrainz
+            </button>
+        </div>
+
+        <!-- Logout -->
+        <div class="w-full max-w-2xl border border-white p-6 dashboard-container">
+            <button id="logout-button" class="w-full bg-red-500 p-2 uppercase hover-effect">Logout</button>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer w-full py-4 px-8 mt-12">
+        <div class="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-center">
+            <div class="mb-4 md:mb-0">
+                <span>&copy; 2025 Dinosonic | <span id="version">Version 0.0.0</span></span>
+            </div>
+            <div class="flex space-x-6">
+                <a href="https://github.com/sonicdino/dinosonic" class="social-link" target="_blank">GitHub</a>
+                <!-- <a href="https://dinosonic.fuge.dev" class="social-link" target="_blank">Website</a>
                 <a href="https://docs.dinosonic.fuge.dev" class="social-link" target="_blank">Documentation</a> -->
-                </div>
-            </div>
-        </footer>
-
-        <!-- Edit User Modal -->
-        <div id="edit-user-modal" class="hidden fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-            <div class="bg-black p-6 border border-white shadow-lg">
-                <h2 class="text-xl font-bold mb-4">Edit User</h2>
-                <label class="block">Username:
-                    <input type="text" id="edit-username" class="bg-inherit border border-white p-2 w-full">
-                </label>
-                <label class="block mt-2">New Password:
-                    <input type="password" id="edit-password" class="bg-inherit border border-white p-2 w-full">
-                </label>
-                <div class="mt-4">
-                    <h3 class="font-semibold">Permissions</h3>
-                    <div id="edit-permissions" class="grid grid-cols-2 gap-2 mt-2">
-                        <!-- Checkboxes will be inserted here -->
-                    </div>
-                </div>
-                <div class="mt-4 flex justify-between">
-                    <button id="save-user" class="bg-green-500 px-4 py-2 hover-effect">Save</button>
-                    <button id="close-modal" class="bg-white text-black px-4 py-2 hover-effect">Cancel</button>
-                </div>
             </div>
         </div>
+    </footer>
 
-        <script>
-            document.addEventListener('DOMContentLoaded', async function () {
-                const usersContainer = document.getElementById('users-container');
-                const adminControls = document.getElementById('admin-controls');
-                const createUserBtn = document.getElementById('create-user');
+    <!-- Edit User Modal -->
+    <div id="edit-user-modal" class="hidden fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+        <div class="bg-black p-6 border border-white shadow-lg">
+            <h2 class="text-xl font-bold mb-4">Edit User</h2>
+            <label class="block">Username:
+                <input type="text" id="edit-username" class="bg-inherit border border-white p-2 w-full">
+            </label>
+            <label class="block mt-2">New Password:
+                <input type="password" id="edit-password" class="bg-inherit border border-white p-2 w-full">
+            </label>
+            <div class="mt-4">
+                <h3 class="font-semibold">Permissions</h3>
+                <div id="edit-permissions" class="grid grid-cols-2 gap-2 mt-2">
+                    <!-- Checkboxes will be inserted here -->
+                </div>
+            </div>
+            <div class="mt-4 flex justify-between">
+                <button id="save-user" class="bg-green-500 px-4 py-2 hover-effect">Save</button>
+                <button id="close-modal" class="bg-white text-black px-4 py-2 hover-effect">Cancel</button>
+            </div>
+        </div>
+    </div>
 
-                // Modal Elements
-                const editUserModal = document.getElementById('edit-user-modal');
-                const editUsernameInput = document.getElementById('edit-username');
-                const editPasswordInput = document.getElementById('edit-password');
-                const editPermissionsContainer = document.getElementById('edit-permissions');
-                const saveUserBtn = document.getElementById('save-user');
-                const closeModalBtn = document.getElementById('close-modal');
+    <script>
+        document.addEventListener('DOMContentLoaded', async function () {
+            const usersContainer = document.getElementById('users-container');
+            const adminControls = document.getElementById('admin-controls');
+            const createUserBtn = document.getElementById('create-user');
 
-                let editingUser = null; // Stores current user being edited
+            // Modal Elements
+            const editUserModal = document.getElementById('edit-user-modal');
+            const editUsernameInput = document.getElementById('edit-username');
+            const editPasswordInput = document.getElementById('edit-password');
+            const editPermissionsContainer = document.getElementById('edit-permissions');
+            const saveUserBtn = document.getElementById('save-user');
+            const closeModalBtn = document.getElementById('close-modal');
 
-                async function checkUserPermissions() {
-                    const response = await fetch('/api/users');
-                    const data = await response.json();
-                    const currentUser = data.currentUser;
+            let editingUser = null; // Stores current user being edited
 
-                    if (currentUser.adminRole) {
-                        document.getElementById('user-management').classList.remove('hidden');
-                        document.getElementById('admin-controls').classList.remove('hidden');
-                        fetchUsers();
-                    }
+            async function checkUserPermissions() {
+                const response = await fetch('/api/users');
+                const data = await response.json();
+                const currentUser = data.currentUser;
+
+                if (currentUser.adminRole) {
+                    document.getElementById('user-management').classList.remove('hidden');
+                    document.getElementById('admin-controls').classList.remove('hidden');
+                    fetchUsers();
                 }
+            }
 
-                async function fetchUsers() {
-                    const response = await fetch('/api/users');
-                    const data = await response.json();
-                    const currentUser = data.currentUser;
-                    const users = data.users;
+            async function fetchUsers() {
+                const response = await fetch('/api/users');
+                const data = await response.json();
+                const currentUser = data.currentUser;
+                const users = data.users;
 
-                    usersContainer.innerHTML = '';
+                usersContainer.innerHTML = '';
 
-                    users.forEach((user) => {
-                        if (!currentUser.adminRole && user.username !== currentUser.username) return;
+                users.forEach((user) => {
+                    if (!currentUser.adminRole && user.username !== currentUser.username) return;
 
-                        const userElement = document.createElement('li');
-                        userElement.classList.add('border', 'p-4', 'mb-2');
-                        userElement.innerHTML = `
+                    const userElement = document.createElement('li');
+                    userElement.classList.add('border', 'p-4', 'mb-2');
+                    userElement.innerHTML = `
                         <strong>${user.username}</strong>
-                        ${
-                            currentUser.adminRole && user.username !== currentUser.username
-                                ? `<button onclick="deleteUser('${user.username}')" class="bg-red-500 p-1 ml-2 hover-effect">Delete</button>`
-                                : ''
+                        ${currentUser.adminRole && user.username !== currentUser.username
+                            ? `<button onclick="deleteUser('${user.username}')" class="bg-red-500 p-1 ml-2 hover-effect">Delete</button>`
+                            : ''
                         }
                         <button onclick="openEditModal('${user.username}')" class="bg-blue-500 p-1 ml-2 hover-effect">Edit</button>
                     `;
 
-                        usersContainer.appendChild(userElement);
-                    });
+                    usersContainer.appendChild(userElement);
+                });
 
-                    if (currentUser.adminRole) {
-                        adminControls.classList.remove('hidden');
-                    }
+                if (currentUser.adminRole) {
+                    adminControls.classList.remove('hidden');
+                }
+            }
+
+            async function createUser() {
+                const username = document.getElementById('new-username').value;
+                const password = document.getElementById('new-password').value;
+
+                if (!username || !password) {
+                    alert('Username and password are required');
+                    return;
                 }
 
-                async function createUser() {
-                    const username = document.getElementById('new-username').value;
-                    const password = document.getElementById('new-password').value;
+                await fetch('/api/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password }),
+                });
 
-                    if (!username || !password) {
-                        alert('Username and password are required');
-                        return;
-                    }
+                // Clear inputs
+                document.getElementById('new-username').value = '';
+                document.getElementById('new-password').value = '';
 
-                    await fetch('/api/users', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ username, password }),
-                    });
+                fetchUsers();
+            }
 
-                    // Clear inputs
-                    document.getElementById('new-username').value = '';
-                    document.getElementById('new-password').value = '';
-
+            window.deleteUser = async function (username) {
+                if (confirm(`Are you sure you want to delete user ${username}?`)) {
+                    await fetch(`/api/users/${username}`, { method: 'DELETE' });
                     fetchUsers();
                 }
+            };
 
-                window.deleteUser = async function (username) {
-                    if (confirm(`Are you sure you want to delete user ${username}?`)) {
-                        await fetch(`/api/users/${username}`, { method: 'DELETE' });
-                        fetchUsers();
-                    }
-                };
+            window.openEditModal = async function (username) {
+                const response = await fetch(`/api/users/${username}`);
+                editingUser = await response.json();
 
-                window.openEditModal = async function (username) {
-                    const response = await fetch(`/api/users/${username}`);
-                    editingUser = await response.json();
+                // Fill modal inputs
+                editUsernameInput.value = editingUser.username;
+                editPasswordInput.value = ''; // Don't pre-fill passwords
 
-                    // Fill modal inputs
-                    editUsernameInput.value = editingUser.username;
-                    editPasswordInput.value = ''; // Don't pre-fill passwords
+                // Generate checkboxes for permissions
+                editPermissionsContainer.innerHTML = '';
+                const permissions = [
+                    'adminRole',
+                    'settingsRole',
+                    'downloadRole',
+                    'playlistRole',
+                    'coverArtRole',
+                    'jukeboxRole',
+                    'streamRole',
+                    'scrobblingEnabled',
+                ];
 
-                    // Generate checkboxes for permissions
-                    editPermissionsContainer.innerHTML = '';
-                    const permissions = [
-                        'adminRole',
-                        'settingsRole',
-                        'downloadRole',
-                        'playlistRole',
-                        'coverArtRole',
-                        'streamRole',
-                        'scrobblingEnabled',
-                    ];
-
-                    permissions.forEach((permission) => {
-                        const isChecked = editingUser[permission] ? 'checked' : '';
-                        editPermissionsContainer.innerHTML += `
+                permissions.forEach((permission) => {
+                    const isChecked = editingUser[permission] ? 'checked' : '';
+                    editPermissionsContainer.innerHTML += `
                         <label class="flex items-center">
                             <input type="checkbox" id="perm-${permission}" ${isChecked} class="mr-2"> 
                             <span>${permission}</span>
                         </label>
                     `;
-                    });
+                });
 
-                    // Show modal
-                    editUserModal.classList.remove('hidden');
+                // Show modal
+                editUserModal.classList.remove('hidden');
+            };
+
+            saveUserBtn.addEventListener('click', async () => {
+                if (!editingUser) return;
+
+                const updatedUser = {
+                    username: editUsernameInput.value,
+                    password: editPasswordInput.value || undefined, // Don't send password if empty
+                    permissions: {
+                        uploadRole: false,
+                        commentRole: false,
+                        podcastRole: false,
+                        shareRole: false,
+                    },
                 };
 
-                saveUserBtn.addEventListener('click', async () => {
-                    if (!editingUser) return;
+                // Permissions that can be modified by the admin
+                const editablePermissions = [
+                    'adminRole',
+                    'settingsRole',
+                    'downloadRole',
+                    'playlistRole',
+                    'coverArtRole',
+                    'jukeboxRole',
+                    'streamRole',
+                    'scrobblingEnabled',
+                ];
 
-                    const updatedUser = {
-                        username: editUsernameInput.value,
-                        password: editPasswordInput.value || undefined, // Don't send password if empty
-                        permissions: {
-                            uploadRole: false,
-                            commentRole: false,
-                            podcastRole: false,
-                            jukeboxRole: false,
-                            shareRole: false,
-                        },
+                // Collect editable permissions from the form
+                editablePermissions.forEach((permission) => {
+                    updatedUser.permissions[permission] = document.getElementById(`perm-${permission}`).checked;
+                });
+
+                await fetch(`/api/users/${editingUser.username}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updatedUser),
+                });
+
+                editUserModal.classList.add('hidden');
+                fetchUsers();
+            });
+
+            closeModalBtn.addEventListener('click', () => {
+                editUserModal.classList.add('hidden');
+            });
+
+            createUserBtn.addEventListener('click', createUser);
+
+            async function checkStatus() {
+                const response = await fetch('/api/status', { credentials: 'include' });
+                const data = await response.json();
+
+                const lastfmText = document.getElementById('lastfm-text');
+                const lastfmButton = document.getElementById('lastfm-button');
+                const listenbrainzText = document.getElementById('listenbrainz-text');
+                const listenbrainzInputContainer = document.getElementById('listenbrainz-input-container');
+                const listenbrainzButton = document.getElementById('listenbrainz-button');
+                const listenbrainzTokenInput = document.getElementById('listenbrainz-token-input');
+
+                lastfmText.textContent = data.lastfm ? 'Linked' : 'Not Linked';
+                lastfmText.classList.toggle('text-green-500', data.lastfm);
+                lastfmText.classList.toggle('text-red-500', !data.lastfm);
+                listenbrainzInputContainer.classList.add('hidden');
+                listenbrainzButton.classList.remove('bg-red-500', 'bg-green-700');
+                listenbrainzButton.classList.add('bg-white', 'text-black');
+
+                if (data.lastFMScrobblingEnabled) {
+                    lastfmButton.textContent = data.lastfm ? 'Unlink LastFM' : 'Link LastFM';
+                    lastfmButton.onclick = () => {
+                        if (data.lastfm && confirm('Are you sure you want to unlink your last.fm account?')) {
+                            window.location.href = '/api/unlink/lastfm';
+                        }
+
+                        if (!data.lastfm) window.location.href = '/api/link/lastfm';
                     };
 
-                    // Permissions that can be modified by the admin
-                    const editablePermissions = [
-                        'adminRole',
-                        'settingsRole',
-                        'downloadRole',
-                        'playlistRole',
-                        'coverArtRole',
-                        'streamRole',
-                        'scrobblingEnabled',
-                    ];
-
-                    // Collect editable permissions from the form
-                    editablePermissions.forEach((permission) => {
-                        updatedUser.permissions[permission] = document.getElementById(`perm-${permission}`).checked;
-                    });
-
-                    await fetch(`/api/users/${editingUser.username}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(updatedUser),
-                    });
-
-                    editUserModal.classList.add('hidden');
-                    fetchUsers();
-                });
-
-                closeModalBtn.addEventListener('click', () => {
-                    editUserModal.classList.add('hidden');
-                });
-
-                createUserBtn.addEventListener('click', createUser);
-
-                async function checkStatus() {
-                    const response = await fetch('/api/status', { credentials: 'include' });
-                    const data = await response.json();
-
-                    const lastfmText = document.getElementById('lastfm-text');
-                    const listenbrainzText = document.getElementById('listenbrainz-text');
-                    const lastfmButton = document.getElementById('lastfm-button');
-                    const listenbrainzButton = document.getElementById('listenbrainz-button');
-
-                    lastfmText.textContent = data.lastfm ? 'Linked' : 'Not Linked';
-                    lastfmText.classList.toggle('text-green-500', data.lastfm);
-                    lastfmText.classList.toggle('text-red-500', !data.lastfm);
-
-                    listenbrainzText.textContent = data.listenbrainz ? 'Linked' : 'Not Linked';
-                    listenbrainzText.classList.toggle('text-green-500', data.listenbrainz);
-                    listenbrainzText.classList.toggle('text-red-500', !data.listenbrainz);
-
-                    listenbrainzButton.classList.add('opacity-50', 'cursor-not-allowed');
-
-                    if (data.lastFMScrobblingEnabled) {
-                        lastfmButton.textContent = data.lastfm ? 'Unlink LastFM' : 'Link LastFM';
-                        lastfmButton.onclick = () => {
-                            if (data.lastfm && confirm('Are you sure you want to unlink your last.fm account?')) {
-                                window.location.href = '/api/unlink/lastfm';
-                            }
-
-                            if (!data.lastfm) window.location.href = '/api/link/lastfm';
-                        };
-
-                        listenbrainzButton.textContent = data.listenbrainz ? 'Unlink ListenBrainz' : 'Link ListenBrainz';
-                        listenbrainzButton.onclick = () =>
-                            window.location.href = data.listenbrainz ? '/api/unlink/listenbrainz' : '/api/link/listenbrainz';
-
-                        lastfmButton.disabled = false;
-                        // listenbrainzButton.disabled = false;
-                        lastfmButton.classList.remove('opacity-50', 'cursor-not-allowed');
-                        // listenbrainzButton.classList.remove('opacity-50', 'cursor-not-allowed');
-                    } else {
-                        lastfmButton.disabled = true;
-                        listenbrainzButton.disabled = true;
-                        lastfmButton.classList.add('opacity-50', 'cursor-not-allowed');
-                        listenbrainzButton.classList.add('opacity-50', 'cursor-not-allowed');
-
-                        lastfmButton.onclick = () => alert('LastFM scrobbling is not enabled.');
-                        listenbrainzButton.onclick = () => alert('ListenBrainz scrobbling is not enabled.');
-                    }
+                    lastfmButton.disabled = false;
+                    lastfmButton.classList.remove('opacity-50', 'cursor-not-allowed');
+                } else {
+                    lastfmButton.disabled = true;
+                    lastfmButton.classList.add('opacity-50', 'cursor-not-allowed');
+                    lastfmButton.onclick = () => alert('LastFM scrobbling is not enabled.');
                 }
 
-                document.getElementById('logout-button').addEventListener('click', async () => {
-                    if (confirm(`Are you sure you want to log out?`)) {
-                        await fetch('/api/logout', { method: 'POST', credentials: 'include' });
-                        window.location.href = '/admin/login';
-                    }
-                });
+                if (data.listenBrainzScrobblingEnabled) {
+                    if (data.listenBrainz) {
+                        listenbrainzText.innerHTML = `Linked` // as <span class="text-white font-bold">${data.listenbrainzUser}</span>`;
+                        listenbrainzText.classList.add('text-green-500');
+                        listenbrainzText.classList.remove('text-red-500');
 
-                // Close modal when clicking outside of it
-                editUserModal.addEventListener('click', function (event) {
-                    if (event.target === editUserModal) {
-                        editUserModal.classList.add('hidden');
-                    }
-                });
+                        listenbrainzButton.textContent = 'Unlink ListenBrainz';
+                        // listenbrainzButton.classList.add('bg-red-500');
+                        // listenbrainzButton.classList.remove('bg-white', 'text-black');
+                        listenbrainzButton.onclick = () => {
+                            if (confirm('Are you sure you want to unlink your ListenBrainz account?')) {
+                                unlinkListenBrainz();
+                            }
+                        };
+                    } else {
+                        listenbrainzText.textContent = 'Not Linked';
+                        // listenbrainzText.classList.add('text-red-500');
+                        listenbrainzText.classList.remove('text-green-500');
 
-                checkUserPermissions();
-                checkStatus();
+                        listenbrainzButton.textContent = 'Link ListenBrainz';
+                        listenbrainzButton.onclick = showListenBrainzInput;
+                    }
+
+                    listenbrainzButton.disabled = false;
+                    listenbrainzButton.classList.remove('opacity-50', 'cursor-not-allowed');
+
+                } else {
+                    listenbrainzButton.classList.add('opacity-50', 'cursor-not-allowed');
+                    listenbrainzButton.disabled = true;
+                    listenbrainzButton.onclick = () => alert('Scrobbling is not enabled in the server configuration.');
+                }
+            }
+
+            function showListenBrainzInput() {
+                // STATE: User wants to link, show the input field
+                const listenbrainzInputContainer = document.getElementById('listenbrainz-input-container');
+                const listenbrainzButton = document.getElementById('listenbrainz-button');
+
+                listenbrainzInputContainer.classList.remove('hidden');
+                listenbrainzButton.textContent = 'Save Token';
+                listenbrainzButton.classList.add('bg-green-700');
+                listenbrainzButton.classList.remove('bg-white', 'text-black');
+                listenbrainzButton.onclick = saveListenBrainzToken;
+            }
+
+
+            async function saveListenBrainzToken() {
+                const tokenInput = document.getElementById('listenbrainz-token-input');
+                const token = tokenInput.value.trim();
+
+                if (!token) {
+                    alert('Please enter a ListenBrainz user token.');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/link/listenbrainz', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ token: token })
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok && result.success) {
+                        alert(`Successfully linked ListenBrainz account for user: ${result.userName}`);
+                        tokenInput.value = ''; // Clear input on success
+                    } else {
+                        alert(`Failed to link token. Error: ${result.error || 'Invalid token or server error.'}`);
+                    }
+                } catch (error) {
+                    alert('An error occurred while trying to save the token.');
+                    console.error('Save ListenBrainz Token Error:', error);
+                } finally {
+                    checkStatus(); // Always refresh the UI to show the final state
+                }
+            }
+
+            async function unlinkListenBrainz() {
+                try {
+                    await fetch('/api/unlink/listenbrainz', { method: 'GET' }); // Or POST if you prefer
+                } catch (error) {
+                    alert('An error occurred while trying to unlink.');
+                    console.error('Unlink ListenBrainz Error:', error);
+                } finally {
+                    checkStatus(); // Refresh the UI after unlinking
+                }
+            }
+
+
+            document.getElementById('logout-button').addEventListener('click', async () => {
+                if (confirm(`Are you sure you want to log out?`)) {
+                    await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+                    window.location.href = '/admin/login';
+                }
             });
-        </script>
-    </body>
+
+
+            document.getElementById('logout-button').addEventListener('click', async () => {
+                if (confirm(`Are you sure you want to log out?`)) {
+                    await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+                    window.location.href = '/admin/login';
+                }
+            });
+
+            // Close modal when clicking outside of it
+            editUserModal.addEventListener('click', function (event) {
+                if (event.target === editUserModal) {
+                    editUserModal.classList.add('hidden');
+                }
+            });
+
+            checkUserPermissions();
+            checkStatus();
+        });
+    </script>
+</body>
+
 </html>

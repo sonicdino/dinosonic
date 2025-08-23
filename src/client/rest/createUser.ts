@@ -16,7 +16,7 @@ async function handlecreateUser(c: Context) {
     const adminRole = (await getField(c, 'adminRole')) === 'true';
     const settingsRole = (await getField(c, 'settingsRole')) === 'true' ? (await getField(c, 'settingsRole')) === 'true' : true;
     const streamRole = await getField(c, 'streamRole') ? (await getField(c, 'streamRole')) === 'true' : true;
-    const jukeboxRole = /* (await getField(c, 'jukeboxRole')) === 'true' // Jukebox is not planned. */ false;
+    const jukeboxRole = await getField(c, 'jukeboxRole') ? (await getField(c, 'jukeboxRole')) === 'true' : false;
     const downloadRole = (await getField(c, 'downloadRole')) === 'true';
     const uploadRole = /* (await getField(c, 'uploadRole')) === 'true' // Videos are not planned. */ false;
     const playlistRole = await getField(c, 'playlistRole') ? (await getField(c, 'playlistRole')) === 'true' : true;

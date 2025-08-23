@@ -30,6 +30,7 @@ import { hardReset } from '../../MediaScanner.ts';
 import path from 'node:path';
 import { ensureDir } from '@std/fs/ensure-dir';
 import { exists } from '@std/fs/exists';
+import { validateToken } from '../../ListenBrainz.ts';
 const api = new Hono();
 
 api.get('/public-stream/:shareId/:itemId', async (c: Context) => {
@@ -394,8 +395,9 @@ api.get('/status', async (c: Context) => {
 
     return c.json({
         lastFMScrobblingEnabled: config.last_fm?.enable_scrobbling,
+        listenBrainzScrobblingEnabled: config.listenbrainz?.enable_scrobbling,
         lastfm: !!user.backend.lastFMSessionKey,
-        listenbrainz: !!user.backend.listenbrainzToken,
+        listenBrainz: !!user.backend.listenBrainzToken,
     });
 });
 
@@ -591,15 +593,6 @@ api.get('/unlink/lastfm', async (c: Context) => {
     return c.redirect('/admin/');
 });
 
-api.get('/unlink/listenbrainz', async (c: Context) => {
-    const sessionUser = c.get('user') as { user: SubsonicUser; exp: number };
-    const user = await getUserByUsername(sessionUser.user.username);
-    if (!user) return c.json({ error: 'User not found. Try relogging.' }, 401);
-
-    user.backend.listenbrainzToken = undefined;
-    await database.set(['users', user.backend.id], user);
-});
-
 api.get('/callback/lastfm', async (c: Context) => {
     const token = c.req.query('token');
     if (!token) return c.text('Missing token', 400);
@@ -617,6 +610,61 @@ api.get('/callback/lastfm', async (c: Context) => {
     return c.redirect('/admin/');
 });
 
-// listenbrainz linking (maybe)
+api.post('/link/listenbrainz', async (c: Context) => {
+    const sessionUser = c.get('user') as { user: SubsonicUser; exp: number };
+    if (!sessionUser?.user.username) {
+        return c.json({ success: false, error: 'Authentication required.' }, 401);
+    }
 
+    let body;
+    try {
+        body = await c.req.json();
+    } catch (_) {
+        return c.json({ success: false, error: 'Invalid request body. Expected JSON.' }, 400);
+    }
+
+    const token = body.token;
+    if (!token || typeof token !== 'string') {
+        return c.json({ success: false, error: 'User token is missing or invalid in the request body.' }, 400);
+    }
+
+    const validationResult = await validateToken(token);
+    if (!validationResult.valid) {
+        return c.json({ success: false, error: 'The provided ListenBrainz token is not valid.' }, 400);
+    }
+
+    const user = await getUserByUsername(sessionUser.user.username);
+    if (!user) {
+        return c.json({ success: false, error: 'User not found in the database.' }, 500);
+    }
+
+    user.backend.listenBrainzToken = token;
+    await database.set(['users', user.backend.id], user);
+
+    logger.info(`Successfully linked ListenBrainz account for user: ${user.subsonic.username}`);
+
+    return c.json({
+        success: true,
+        userName: validationResult.userName,
+    });
+});
+
+api.get('/unlink/listenbrainz', async (c: Context) => {
+    const sessionUser = c.get('user') as { user: SubsonicUser; exp: number };
+    if (!sessionUser?.user.username) {
+        return c.json({ success: false, error: 'Authentication required.' }, 401);
+    }
+
+    const user = await getUserByUsername(sessionUser.user.username);
+    if (!user) {
+        return c.json({ success: false, error: 'User not found in the database.' }, 500);
+    }
+
+    user.backend.listenBrainzToken = undefined;
+    await database.set(['users', user.backend.id], user);
+
+    logger.info(`Unlinked ListenBrainz account for user: ${user.subsonic.username}`);
+
+    return c.redirect('/admin/');
+});
 export default api;
