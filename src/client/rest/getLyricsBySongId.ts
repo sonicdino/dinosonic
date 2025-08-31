@@ -98,7 +98,6 @@ async function handlegetLyricsBySongId(c: Context) {
 async function _searchLrclib(artistNameToSearch: string, trackName: string, albumName: string, duration: number): Promise<string | null> {
     const lrclibGetUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(trackName)}&artist_name=${encodeURIComponent(artistNameToSearch)
         }&album_name=${encodeURIComponent(albumName)}&duration=${encodeURIComponent(duration)}`;
-    console.log(lrclibGetUrl)
 
     try {
         const lrclibGetResponse = await fetch(lrclibGetUrl);

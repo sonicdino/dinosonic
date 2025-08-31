@@ -137,12 +137,20 @@ api.get('/public-stream/:shareId/:itemId', async (c: Context) => {
             'pipe:1',
         ];
         try {
+            const durationInSeconds = track.subsonic.duration;
             const command = new Deno.Command(ffmpegPath, { args: ffmpegArgs, stdout: 'piped', stderr: 'piped' });
             const process = command.spawn();
+
+            if (durationInSeconds) {
+                const lowQualityMp3Bitrate = 128000; // in bits per second
+                const estimatedContentLength = Math.floor((durationInSeconds * lowQualityMp3Bitrate) / 8);
+
+                c.header('Content-Length', estimatedContentLength.toString());
+            }
+
             c.header('Content-Type', contentType);
             c.header('Accept-Ranges', 'none');
             c.header('Cache-Control', 'public, max-age=3600');
-            (async () => {/* ... stderr logging ... */ })();
             return c.body(process.stdout);
             // deno-lint-ignore no-explicit-any
         } catch (error: any) {

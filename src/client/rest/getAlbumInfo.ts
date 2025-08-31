@@ -39,9 +39,7 @@ async function handleGetAlbumInfo(c: Context) {
         albumInfoResponse = infoCopy;
     }
 
-    return createResponse(c, {
-        [/(getAlbumInfo2|getAlbumInfo2\.view)$/.test(c.req.path) ? 'albumInfo2' : 'albumInfo']: albumInfoResponse,
-    }, 'ok');
+    return createResponse(c, { albumInfo: albumInfoResponse, }, 'ok');
 }
 
 getAlbumInfo.get('/getAlbumInfo', handleGetAlbumInfo);
