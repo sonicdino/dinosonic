@@ -1,4 +1,4 @@
-import { config, logger, signParams } from './util.ts';
+import { checkInternetConnection, config, logger, signParams } from './util.ts';
 import { Song, User } from './zod.ts';
 
 export async function getArtistInfo(artist: string) {
@@ -36,6 +36,11 @@ export async function getTopTracks(artist: string, count = 50, mbid?: string) {
  * @returns The Last.fm username string, or null if an error occurs or keys are missing.
  */
 export async function getUsernameFromSessionKey(sessionKey: string): Promise<string | null> {
+    // Check if internet connection exists
+    if (!checkInternetConnection()) {
+        logger.debug('LFM getUsernameFromSessionKey: No internet connection.');
+        return null;
+    }
     // Check if necessary config is available
     if (!config.last_fm?.api_key || !config.last_fm.api_secret) {
         logger.error('Last.fm getUsernameFromSessionKey: API key or API secret is missing in config.');

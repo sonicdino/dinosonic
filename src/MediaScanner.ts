@@ -28,8 +28,12 @@ import { Genre } from './zod.ts';
 import { createTrackMapKey, getAlbumInfo, getArtistInfo, getUserLovedTracksMap, getUsernameFromSessionKey, setTrackLoveStatus } from './LastFM.ts';
 import { getArtistCover } from './Spotify.ts';
 import { exists } from '@std/fs/exists';
+import { updatePlaylistCover } from './PlaylistManager.ts';
 
 const seenFiles = new Set<string>();
+
+const artistNameToIdCache = new Map<string, string>();
+const albumNameArtistToIdCache = new Map<string, string>();
 
 interface ScanStatus {
     scanning: boolean;
@@ -105,6 +109,10 @@ export async function hardReset() {
         }
         await Promise.all(promises);
     }
+
+    artistNameToIdCache.clear();
+    albumNameArtistToIdCache.clear();
+
     await cleanupDatabase(); // Run cleanup after clearing main data.
     logger.info('Hard reset done. Starting scan now...');
     await scanMediaDirectories(config.music_folders);
@@ -116,6 +124,8 @@ export async function scanMediaDirectories(directories: string[], cleanup: boole
         return scanStatus;
     }
     scanStatus = { scanning: true, count: 0, totalFiles: 0, lastScan: new Date() };
+    artistNameToIdCache.clear();
+
     for (const dir of directories) {
         logger[debug_log ? 'debug' : 'info'](`🔍 Scanning directory: ${dir}`);
         await scanDirectory(dir);
@@ -209,6 +219,31 @@ async function cleanupDatabase() {
         }
     }
 
+    for await (const playlistEntry of database.list({ prefix: ['playlists'] })) {
+        const playlistParseResult = PlaylistSchema.safeParse(playlistEntry.value);
+        if (playlistParseResult.success) {
+            const playlist = playlistParseResult.data;
+            const originalLength = playlist.entry.length;
+            playlist.entry = playlist.entry.filter((trackIdOrObject) => {
+                const id = typeof trackIdOrObject === 'string' ? trackIdOrObject : (trackIdOrObject as { id: string }).id;
+                return seenTrackIds.has(id);
+            });
+
+            if (playlist.entry.length !== originalLength) {
+                playlist.songCount = playlist.entry.length;
+                logger.info(`📝 Updated playlist "${playlist.name}", removed missing tracks.`);
+                await database.set(['playlists', playlist.id], playlist);
+            }
+
+            if (playlist.coverArt) coversInUse.add(playlist.id)
+            if (await updatePlaylistCover(playlist.id)) coversInUse.add(playlist.id);
+
+        } else {
+            logger.warn(`Data for playlist ID ${String(playlistEntry.key[1])} did not match PlaylistSchema.`);
+
+        }
+    }
+
     for await (const coverEntry of database.list({ prefix: ['covers'] })) {
         const coverId = coverEntry.key[1] as string;
         if (!coversInUse.has(coverId)) {
@@ -237,25 +272,6 @@ async function cleanupDatabase() {
                 logger.info(`❌ Removing user data for missing ${entityType}: ${entityId}`);
                 await database.delete(userDataEntry.key);
             }
-        }
-    }
-
-    for await (const playlistEntry of database.list({ prefix: ['playlists'] })) {
-        const playlistParseResult = PlaylistSchema.safeParse(playlistEntry.value);
-        if (playlistParseResult.success) {
-            const playlist = playlistParseResult.data;
-            const originalLength = playlist.entry.length;
-            playlist.entry = playlist.entry.filter((trackIdOrObject) => {
-                const id = typeof trackIdOrObject === 'string' ? trackIdOrObject : (trackIdOrObject as { id: string }).id;
-                return seenTrackIds.has(id);
-            });
-            if (playlist.entry.length !== originalLength) {
-                playlist.songCount = playlist.entry.length;
-                logger.info(`📝 Updated playlist "${playlist.name}", removed missing tracks.`);
-                await database.set(['playlists', playlist.id], playlist);
-            }
-        } else {
-            logger.warn(`Data for playlist ID ${String(playlistEntry.key[1])} did not match PlaylistSchema.`);
         }
     }
 
@@ -293,28 +309,45 @@ async function processMediaFile(filePath: string) {
 }
 
 export async function getArtistIDByName(name: string): Promise<string | undefined> {
+    const normalizedName = name.toLowerCase().trim();
+
+    if (artistNameToIdCache.has(normalizedName)) return artistNameToIdCache.get(normalizedName);
+
     for await (const entry of database.list({ prefix: ['artists'] })) {
         const artistParseResult = ArtistSchema.safeParse(entry.value);
-        if (artistParseResult.success && artistParseResult.data.artist.name.toLowerCase().trim() === name.toLowerCase().trim()) {
-            return artistParseResult.data.artist.id;
+        if (artistParseResult.success && artistParseResult.data.artist.name.toLowerCase().trim() === normalizedName) {
+            const id = artistParseResult.data.artist.id;
+            artistNameToIdCache.set(normalizedName, id);
+            return id;
         }
     }
+
     return undefined;
 }
 
 async function getAlbumIDByName(name: string, artists?: AlbumID3Artists[]): Promise<string | undefined> {
+    const normalizedName = name.toLowerCase().trim();
+    const cacheKey = artists?.length
+        ? `${normalizedName}|${artists.map(a => a.name.toLowerCase().trim()).sort().join('|')}`
+        : normalizedName;
+
+    if (albumNameArtistToIdCache.has(cacheKey)) return albumNameArtistToIdCache.get(cacheKey);
+
     for await (const { value } of database.list({ prefix: ['albums'] })) {
         const parsedEntry = AlbumSchema.safeParse(value);
-        if (!parsedEntry.success || parsedEntry.data.subsonic.name.toLowerCase().trim() !== name.toLowerCase().trim()) continue;
+        if (!parsedEntry.success || parsedEntry.data.subsonic.name.toLowerCase().trim() !== normalizedName) continue;
         if (
             !artists?.length ||
             parsedEntry.data.subsonic.artists.some((albumArtist) =>
                 artists.some((a) => a.name.toLowerCase().trim() === albumArtist.name.toLowerCase().trim())
             )
         ) {
-            return parsedEntry.data.subsonic.id;
+            const id = parsedEntry.data.subsonic.id;
+            albumNameArtistToIdCache.set(cacheKey, id);
+            return id;
         }
     }
+
     return undefined;
 }
 

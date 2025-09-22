@@ -1,6 +1,7 @@
 import { Context, Hono } from '@hono/hono';
 import { createResponse, database, generateId, getField, getFields, getUserByUsername, validateAuth } from '../../util.ts';
 import { Playlist, PlaylistSchema, Song, userData } from '../../zod.ts';
+import { updatePlaylistCover } from '../../PlaylistManager.ts';
 
 const createPlaylist = new Hono();
 
@@ -98,6 +99,10 @@ async function handleCreatePlaylist(c: Context) {
     // Save playlist to database
     if (playlist) {
         await database.set(['playlists', playlist.id], playlist);
+        await updatePlaylistCover(playlist.id);
+
+        const finalPlaylistState = (await database.get(['playlists', playlist.id])).value as Playlist | null;
+        if (!finalPlaylistState) return createResponse(c, {}, 'failed', { code: 0, message: 'Failed to retrieve playlist after update' });
 
         return createResponse(c, {
             playlist: {

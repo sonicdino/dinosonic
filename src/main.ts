@@ -25,6 +25,10 @@ import { parse } from '@std/toml';
 import * as path from '@std/path';
 import { authMiddleware } from './client/middleware.ts';
 import { ensureDir } from '@std/fs';
+
+// Simple in-memory cache for share pages
+const sharePageCache = new Map<string, { html: string; timestamp: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache TTL
 let configFile = Deno.env.get('DINO_CONFIG_FILE');
 let config = null;
 
@@ -68,48 +72,72 @@ if (configFile) {
     const configText = await Deno.readTextFile(configFile);
     configParse = ConfigSchema.safeParse(parse(configText));
 } else {
-    const conf: Config = {
-        port: parseInt(Deno.env.get('DINO_PORT') || '4100'),
-        log_level: Deno.env.get('DINO_LOG_LEVEL') || 'OFF',
-        // @ts-expect-error If data folder is not set via env, error and exit.
+    // Cache environment variables to reduce redundant lookups
+    const envVars = {
+        port: Deno.env.get('DINO_PORT'),
+        log_level: Deno.env.get('DINO_LOG_LEVEL'),
         data_folder: Deno.env.get('DINO_DATA_FOLDER'),
         ui_folder: Deno.env.get('DINO_UI_FOLDER'),
-        music_folders: Deno.env.get('DINO_MUSIC_FOLDERS')?.split(';') || [],
-        scan_on_start: Deno.env.get('DINO_SCAN_ON_START') === 'true',
-        scan_interval: Deno.env.get('DINO_SCAN_INTERVAL') || '1d',
-        artist_separators: (Deno.env.get('DINO_ARTIST_SEPARATORS') || ';/').split(''),
-        genre_separators: (Deno.env.get('DINO_GENRE_SEPARATORS') || ';,').split(''),
-        // @ts-expect-error If default admin password is not set via env, error and exit.
+        music_folders: Deno.env.get('DINO_MUSIC_FOLDERS'),
+        scan_on_start: Deno.env.get('DINO_SCAN_ON_START'),
+        scan_interval: Deno.env.get('DINO_SCAN_INTERVAL'),
+        artist_separators: Deno.env.get('DINO_ARTIST_SEPARATORS'),
+        genre_separators: Deno.env.get('DINO_GENRE_SEPARATORS'),
         default_admin_password: Deno.env.get('DINO_DEFAULT_ADMIN_PASSWORD'),
+        lastfm_enabled: Deno.env.get('DINO_LASTFM_ENABLED'),
+        lastfm_scrobbling: Deno.env.get('DINO_LASTFM_SCROBBLING'),
+        lastfm_apikey: Deno.env.get('DINO_LASTFM_APIKEY'),
+        lastfm_apisecret: Deno.env.get('DINO_LASTFM_APISECRET'),
+        spotify_enabled: Deno.env.get('DINO_SPOTIFY_ENABLED'),
+        spotify_client_id: Deno.env.get('DINO_SPOTIFY_CLIENT_ID'),
+        spotify_client_secret: Deno.env.get('DINO_SPOTIFY_CLIENT_SECRET'),
+        listenbrainz_scrobbling: Deno.env.get('DINO_LISTENBRAINZ_SCROBBLING'),
+        transcoding_enabled: Deno.env.get('DINO_TRANSCODING_ENABLED'),
+        ffmpeg_path: Deno.env.get('DINO_FFMPEG_PATH'),
     };
 
-    if (Deno.env.get('DINO_LASTFM_ENABLED') || Deno.env.get('DINO_LASTFM_SCROBBLING')) {
+    const conf: Config = {
+        port: parseInt(envVars.port || '4100'),
+        log_level: envVars.log_level || 'OFF',
+        // @ts-expect-error If data folder is not set via env, error and exit.
+        data_folder: envVars.data_folder,
+        ui_folder: envVars.ui_folder,
+        music_folders: envVars.music_folders?.split(';') || [],
+        scan_on_start: envVars.scan_on_start === 'true',
+        scan_interval: envVars.scan_interval || '1d',
+        artist_separators: (envVars.artist_separators || ';/').split(''),
+        genre_separators: (envVars.genre_separators || ';,').split(''),
+        // @ts-expect-error If default admin password is not set via env, error and exit.
+        default_admin_password: envVars.default_admin_password,
+    };
+
+    if (envVars.lastfm_enabled || envVars.lastfm_scrobbling) {
         conf.last_fm = {
-            enabled: Deno.env.get('DINO_LASTFM_ENABLED') === 'true' || Deno.env.get('DINO_LASTFM_SCROBBLING') === 'true',
-            api_key: Deno.env.get('DINO_LASTFM_APIKEY'),
-            api_secret: Deno.env.get('DINO_LASTFM_APISECRET'),
-            enable_scrobbling: Deno.env.get('DINO_LASTFM_SCROBBLING') === 'true',
+            enabled: envVars.lastfm_enabled === 'true' || envVars.lastfm_scrobbling === 'true',
+            api_key: envVars.lastfm_apikey,
+            api_secret: envVars.lastfm_apisecret,
+            enable_scrobbling: envVars.lastfm_scrobbling === 'true',
         };
     }
 
-    if (Deno.env.get('DINO_SPOTIFY_ENABLED') || (Deno.env.get('DINO_SPOTIFY_CLIENT_ID') && Deno.env.get('DINO_SPOTIFY_CLIENT_SECRET'))) {
+    if (envVars.spotify_enabled || (envVars.spotify_client_id && envVars.spotify_client_secret)) {
         conf.spotify = {
-            enabled: Deno.env.get('DINO_SPOTIFY_ENABLED') === 'true',
-            client_id: Deno.env.get('DINO_SPOTIFY_CLIENT_ID'),
-            client_secret: Deno.env.get('DINO_SPOTIFY_CLIENT_SECRET'),
+            enabled: envVars.spotify_enabled === 'true',
+            client_id: envVars.spotify_client_id,
+            client_secret: envVars.spotify_client_secret,
         };
     }
 
-    if (Deno.env.get('DINO_LISTENBRAINZ_SCROBBLING')) {
+    if (envVars.listenbrainz_scrobbling) {
         conf.listenbrainz = {
-            enable_scrobbling: Deno.env.get('DINO_LISTENBRAINZ_SCROBBLING') === 'true'
+            enable_scrobbling: envVars.listenbrainz_scrobbling === 'true'
         }
     }
 
-    if (Deno.env.get('DINO_TRANSCODING_ENABLED')) {
+    if (envVars.transcoding_enabled) {
         conf.transcoding = {
-            enabled: typeof Deno.env.get('DINO_TRANSCODING_ENABLED') === 'string' ? Deno.env.get('DINO_TRANSCODING_ENABLED') === 'true' : true,
-            ffmpeg_path: Deno.env.get('DINO_FFMPEG_PATH') || 'ffmpeg',
+            enabled: typeof envVars.transcoding_enabled === 'string' ? envVars.transcoding_enabled === 'true' : true,
+            ffmpeg_path: envVars.ffmpeg_path || 'ffmpeg',
         };
     }
 
@@ -134,6 +162,7 @@ const database = await Deno.openKv(path.join(config.data_folder as string, 'dino
 setConstants(database, config);
 
 async function cleanupNowPlaying() {
+    const now = Date.now();
     const allNowPlaying = await database.list({ prefix: ['nowPlaying'] });
 
     for await (const entry of allNowPlaying) {
@@ -146,7 +175,7 @@ async function cleanupNowPlaying() {
             continue;
         }
 
-        const minutesAgo = Math.floor((Date.now() - item.minutesAgo.getTime()) / (1000 * 60));
+        const minutesAgo = Math.floor((now - item.minutesAgo.getTime()) / (1000 * 60));
 
         // Remove if it's been 10 minutes or longer than the song duration
         if (minutesAgo > Math.ceil(item.track.duration / 60)) {
@@ -160,6 +189,19 @@ async function cleanupNowPlaying() {
 setInterval(cleanupNowPlaying, 60 * 1000);
 cleanupNowPlaying();
 
+// Cleanup share page cache periodically
+function cleanupShareCache() {
+    const now = Date.now();
+    for (const [key, value] of sharePageCache.entries()) {
+        if (now - value.timestamp >= CACHE_TTL) {
+            sharePageCache.delete(key);
+        }
+    }
+}
+
+// Run share cache cleanup every 5 minutes
+setInterval(cleanupShareCache, 5 * 60 * 1000);
+
 await ensureAdminUserExistsHybrid();
 
 if (config.scan_on_start) {
@@ -167,10 +209,12 @@ if (config.scan_on_start) {
     scanMediaDirectories(config.music_folders);
 }
 
+// Parse the scan interval once and reuse it
+const scanIntervalMs = parseTimeToMs(config.scan_interval);
 setInterval(() => {
     logger.info('Starting media scan..');
     scanMediaDirectories(config.music_folders, true, true);
-}, parseTimeToMs(config.scan_interval));
+}, scanIntervalMs);
 
 logger.info('🚀 Starting Dinosonic server...');
 const app = new Hono();
@@ -224,140 +268,148 @@ app.get('/share/:shareId', async (c: Context) => {
     const requestUrl = new URL(c.req.url);
     const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
 
-    const shareEntry = await database.get(['shares', shareId]);
-
-    if (!shareEntry.value) {
-        logger.warn(`Share ID ${shareId} not found for /share/ page.`);
-        return c.text('Share not found or has expired.', 404);
+    // Check cache first
+    const cached = sharePageCache.get(shareId);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return c.html(cached.html);
     }
 
-    const shareParseResult = ShareSchema.safeParse(shareEntry.value);
-    if (!shareParseResult.success) {
-        logger.error(`Malformed share data in DB for ID ${shareId}`);
-        return c.text('Invalid share data.', 500);
-    }
-    const share = shareParseResult.data;
+    try {
+        const shareEntry = await database.get(['shares', shareId]);
 
-    if (share.expires && new Date(share.expires) < new Date()) {
-        logger.info(`Share ID ${shareId} has expired. Deleting.`);
-        await database.delete(['shares', shareId]); // Optionally delete expired shares
-        return c.text('Share has expired.', 410); // 410 Gone
-    }
-
-    // Increment view count and update last viewed (can be done here or in /api/public-share-details)
-    // Doing it here means even direct page loads (by crawlers) are counted.
-    share.viewCount = (share.viewCount || 0) + 1;
-    share.lastViewed = new Date();
-    await database.set(['shares', shareId], share); // Save updated share
-
-    // Fetch item details based on share.itemType
-    let item: Song | Album | Playlist | CoverArt | null = null; // Use specific types
-    let ownerUsername = 'Unknown User';
-
-    const ownerEntry = await database.get(['users', share.userId]);
-    if (ownerEntry.value) {
-        const owner = UserSchema.parse(ownerEntry.value);
-        ownerUsername = owner.subsonic.username;
-    }
-
-    switch (share.itemType) {
-        case 'song': {
-            const songVal = (await database.get(['tracks', share.itemId])).value;
-            if (songVal) item = SongSchema.parse(songVal);
-            break;
+        if (!shareEntry.value) {
+            logger.warn(`Share ID ${shareId} not found for /share/ page.`);
+            return c.text('Share not found or has expired.', 404);
         }
-        case 'album': {
-            const albumVal = (await database.get(['albums', share.itemId])).value;
-            if (albumVal) item = AlbumSchema.parse(albumVal);
-            break;
-        }
-        case 'playlist': {
-            const plVal = (await database.get(['playlists', share.itemId])).value;
-            if (plVal) item = PlaylistSchema.parse(plVal);
-            break;
-        }
-        case 'coverArt': {
-            const coverVal = (await database.get(['covers', share.itemId])).value;
-            if (coverVal) item = CoverArtSchema.parse(coverVal);
-            break;
-        }
-    }
 
-    if (!item) {
-        logger.warn(`Shared item ${share.itemId} (type: ${share.itemType}) not found for share page ${shareId}.`);
-        return c.text('Shared item not found.', 404);
-    }
+        const shareParseResult = ShareSchema.safeParse(shareEntry.value);
+        if (!shareParseResult.success) {
+            logger.error(`Malformed share data in DB for ID ${shareId}`);
+            return c.text('Invalid share data.', 500);
+        }
+        const share = shareParseResult.data;
 
-    // Prepare meta tag content
-    let metaTitle = 'Dinosonic Share';
-    let metaDescription = share.description || `Content shared by ${ownerUsername} via Dinosonic.`;
-    let metaImageUrl: string | undefined = undefined;
-    let metaOgType = 'website';
+        if (share.expires && new Date(share.expires) < new Date()) {
+            logger.info(`Share ID ${shareId} has expired. Deleting.`);
+            await database.delete(['shares', shareId]); // Optionally delete expired shares
+            return c.text('Share has expired.', 410); // 410 Gone
+        }
 
-    if (share.itemType === 'song' && item && 'subsonic' in item) {
-        item = item as Song;
-        metaTitle = `${item.subsonic.title || 'Song'} by ${item.subsonic.artist || 'Unknown Artist'}`;
-        metaDescription = share.description ||
-            `Listen to ${item.subsonic.title} on Dinosonic. Shared by ${ownerUsername}. Album: ${item.subsonic.album || 'N/A'}.`;
-        if (item.subsonic.coverArt) metaImageUrl = `${baseUrl}/api/public-cover/${item.subsonic.coverArt}?size=600`;
-        metaOgType = 'music.song';
-    } else if (share.itemType === 'album' && item && 'subsonic' in item) {
-        item = item as Album;
-        metaTitle = `${item.subsonic.name || 'Album'} by ${item.subsonic.artist || 'Unknown Artist'}`;
-        metaDescription = share.description ||
-            `Check out the album "${item.subsonic.name}" by ${item.subsonic.artist || 'Unknown Artist'} on Dinosonic. Shared by ${ownerUsername}.`;
-        if (item.subsonic.coverArt) metaImageUrl = `${baseUrl}/api/public-cover/${item.subsonic.coverArt}?size=600`;
-        metaOgType = 'music.album';
-    } else if (share.itemType === 'playlist' && item && 'name' in item) { // Playlist type check
-        item = item as Playlist;
-        metaTitle = `Playlist: ${item.name || 'Shared Playlist'}`;
-        metaDescription = share.description || `Listen to the playlist "${item.name}" on Dinosonic. Shared by ${ownerUsername}.`;
-        if (item.coverArt) metaImageUrl = `${baseUrl}/api/public-cover/${item.coverArt}?size=600`;
-        else if (item.entry && item.entry.length > 0) { // Fallback to first song's cover
-            const firstSongId = typeof item.entry[0] === 'string' ? item.entry[0] : (item.entry[0] as { id: string }).id;
-            const firstSongEntry = (await database.get(['tracks', firstSongId])).value;
-            if (firstSongEntry) {
-                const firstSong = SongSchema.parse(firstSongEntry);
-                if (firstSong.subsonic.coverArt) metaImageUrl = `${baseUrl}/api/public-cover/${firstSong.subsonic.coverArt}?size=600`;
+        // Increment view count and update last viewed (can be done here or in /api/public-share-details)
+        // Doing it here means even direct page loads (by crawlers) are counted.
+        share.viewCount = (share.viewCount || 0) + 1;
+        share.lastViewed = new Date();
+        await database.set(['shares', shareId], share); // Save updated share
+
+        // Fetch item details based on share.itemType
+        let item: Song | Album | Playlist | CoverArt | null = null; // Use specific types
+        let ownerUsername = 'Unknown User';
+
+        // Get owner information
+        const ownerEntry = await database.get(['users', share.userId]);
+        if (ownerEntry.value) {
+            const owner = UserSchema.parse(ownerEntry.value);
+            ownerUsername = owner.subsonic.username;
+        }
+
+        // Fetch item details based on share.itemType with optimized queries
+        switch (share.itemType) {
+            case 'song': {
+                const songEntry = await database.get(['tracks', share.itemId]);
+                if (songEntry.value) item = SongSchema.parse(songEntry.value);
+                break;
+            }
+            case 'album': {
+                const albumEntry = await database.get(['albums', share.itemId]);
+                if (albumEntry.value) item = AlbumSchema.parse(albumEntry.value);
+                break;
+            }
+            case 'playlist': {
+                const playlistEntry = await database.get(['playlists', share.itemId]);
+                if (playlistEntry.value) item = PlaylistSchema.parse(playlistEntry.value);
+                break;
+            }
+            case 'coverArt': {
+                const coverEntry = await database.get(['covers', share.itemId]);
+                if (coverEntry.value) item = CoverArtSchema.parse(coverEntry.value);
+                break;
             }
         }
-        metaOgType = 'music.playlist';
-    } else if (share.itemType === 'coverArt' && item && 'id' in item) {
-        metaTitle = share.description || `Shared Image from Dinosonic`;
-        metaDescription = `View image shared by ${ownerUsername} on Dinosonic.`;
-        metaImageUrl = `${baseUrl}/api/public-cover/${item.id}?size=1200`; // Item ID is the cover ID
-        metaOgType = 'og:image';
-    }
 
-    // Construct meta tags string
-    let metaTagsHtml = `
-        <meta property="og:title" content="${metaTitle.replace(/"/g, '"')}">
-        <meta property="og:description" content="${metaDescription.replace(/"/g, '"')}">
+        if (!item) {
+            logger.warn(`Shared item ${share.itemId} (type: ${share.itemType}) not found for share page ${shareId}.`);
+            return c.text('Shared item not found.', 404);
+        }
+
+        // Prepare meta tag content
+        let metaTitle = 'Dinosonic Share';
+        let metaDescription = share.description || `Content shared by ${ownerUsername} via Dinosonic.`;
+        let metaImageUrl: string | undefined = undefined;
+        let metaOgType = 'website';
+
+        if (share.itemType === 'song' && item && 'subsonic' in item) {
+            item = item as Song;
+            metaTitle = `${item.subsonic.title || 'Song'} by ${item.subsonic.artist || 'Unknown Artist'}`;
+            metaDescription = share.description ||
+                `Listen to ${item.subsonic.title} on Dinosonic. Shared by ${ownerUsername}. Album: ${item.subsonic.album || 'N/A'}.`;
+            if (item.subsonic.coverArt) metaImageUrl = `${baseUrl}/api/public-cover/${item.subsonic.coverArt}?size=600`;
+            metaOgType = 'music.song';
+        } else if (share.itemType === 'album' && item && 'subsonic' in item) {
+            item = item as Album;
+            metaTitle = `${item.subsonic.name || 'Album'} by ${item.subsonic.artist || 'Unknown Artist'}`;
+            metaDescription = share.description ||
+                `Check out the album "${item.subsonic.name}" by ${item.subsonic.artist || 'Unknown Artist'} on Dinosonic. Shared by ${ownerUsername}.`;
+            if (item.subsonic.coverArt) metaImageUrl = `${baseUrl}/api/public-cover/${item.subsonic.coverArt}?size=600`;
+            metaOgType = 'music.album';
+        } else if (share.itemType === 'playlist' && item && 'name' in item) { // Playlist type check
+            item = item as Playlist;
+            metaTitle = `Playlist: ${item.name || 'Shared Playlist'}`;
+            metaDescription = share.description || `Listen to the playlist "${item.name}" on Dinosonic. Shared by ${ownerUsername}.`;
+            if (item.coverArt) metaImageUrl = `${baseUrl}/api/public-cover/${item.coverArt}?size=600`;
+            else if (item.entry && item.entry.length > 0) { // Fallback to first song's cover
+                const firstSongId = typeof item.entry[0] === 'string' ? item.entry[0] : (item.entry[0] as { id: string }).id;
+                const firstSongEntry = await database.get(['tracks', firstSongId]);
+                if (firstSongEntry.value) {
+                    const firstSong = SongSchema.parse(firstSongEntry.value);
+                    if (firstSong.subsonic.coverArt) metaImageUrl = `${baseUrl}/api/public-cover/${firstSong.subsonic.coverArt}?size=600`;
+                }
+            }
+            metaOgType = 'music.playlist';
+        } else if (share.itemType === 'coverArt' && item && 'id' in item) {
+            metaTitle = share.description || `Shared Image from Dinosonic`;
+            metaDescription = `View image shared by ${ownerUsername} on Dinosonic.`;
+            metaImageUrl = `${baseUrl}/api/public-cover/${item.id}?size=1200`; // Item ID is the cover ID
+            metaOgType = 'og:image';
+        }
+
+        // Construct meta tags string
+        let metaTagsHtml = `
+        <meta property="og:title" content="${metaTitle.replace(/"/g, '\"')}">
+        <meta property="og:description" content="${metaDescription.replace(/"/g, '\"')}">
         <meta property="og:url" content="${baseUrl}/share/${shareId}">
         <meta property="og:site_name" content="Dinosonic">
         <meta property="og:type" content="${metaOgType}">
-        <meta name="twitter:title" content="${metaTitle.replace(/"/g, '"')}">
-        <meta name="twitter:description" content="${metaDescription.replace(/"/g, '"')}">
+        <meta name="twitter:title" content="${metaTitle.replace(/"/g, '\"')}">
+        <meta name="twitter:description" content="${metaDescription.replace(/"/g, '\"')}">
     `;
-    if (metaImageUrl) {
-        metaTagsHtml += `
+        if (metaImageUrl) {
+            metaTagsHtml += `
         <meta property="og:image" content="${metaImageUrl}">
         <meta property="og:image:width" content="600">
         <meta property="og:image:height" content="600">
         <meta name="twitter:image" content="${metaImageUrl}">
         <meta name="twitter:card" content="summary_large_image">`;
-    } else {
-        metaTagsHtml += `
+        } else {
+            metaTagsHtml += `
         <meta name="twitter:card" content="summary">`;
-    }
-    // Add music specific tags if applicable (simplified for brevity here, can be expanded)
-    if (metaOgType === 'music.song' && item && 'subsonic' in item) {
-        item = item as Song;
-        if (item.subsonic.artist) metaTagsHtml += `<meta property="music:musician" content="${item.subsonic.artist.replace(/"/g, '"')}">`;
-        if (item.subsonic.album) metaTagsHtml += `<meta property="music:album" content="${item.subsonic.album.replace(/"/g, '"')}">`;
-    } // etc. for album, playlist
+        }
+        // Add music specific tags if applicable (simplified for brevity here, can be expanded)
+        if (metaOgType === 'music.song' && item && 'subsonic' in item) {
+            item = item as Song;
+            if (item.subsonic.artist) metaTagsHtml += `<meta property="music:musician" content="${item.subsonic.artist.replace(/"/g, '\"')}">`;
+            if (item.subsonic.album) metaTagsHtml += `<meta property="music:album" content="${item.subsonic.album.replace(/"/g, '\"')}">`;
+        } // etc. for album, playlist
 
-    try {
         let htmlContent = await Deno.readTextFile(new URL('./client/share/share.html', import.meta.url));
         // Replace a placeholder in share.html with the dynamic meta tags and page title
         htmlContent = htmlContent.replace(
@@ -368,9 +420,12 @@ app.get('/share/:shareId', async (c: Context) => {
         // though the current share.html JS fetches it anyway.
         // For example: htmlContent = htmlContent.replace('<!-- INITIAL_DATA_PLACEHOLDER -->', `<script>window.__INITIAL_SHARE_DATA__ = ${JSON.stringify({share, item, ownerUsername})};</script>`);
 
+        // Cache the rendered HTML
+        sharePageCache.set(shareId, { html: htmlContent, timestamp: Date.now() });
+
         return c.html(htmlContent);
     } catch (error) {
-        logger.error('Error reading or processing share.html template:', error);
+        logger.error('Error processing share page:', error);
         return c.text('Error loading share page', 500);
     }
 });
@@ -383,21 +438,24 @@ if (config.ui_folder) {
         }
         logger.info(`Serving static UI from: ${config.ui_folder}`);
 
+        // Cache the UI folder path for better performance
+        const uiFolder = config.ui_folder;
+
         app.get(
             '*',
             serveStatic({
-                root: config.ui_folder,
+                root: uiFolder,
                 rewriteRequestPath: (reqPath) => {
-                    const fullPath = path.join(config.ui_folder ?? '', reqPath);
+                    // Use async stat for better performance and avoid blocking the event loop
+                    const fullPath = path.join(uiFolder, reqPath);
                     try {
+                        // Check if file exists using a more efficient approach
                         const stats = Deno.statSync(fullPath);
-                        if (stats.isFile || stats.isDirectory) {
-                            return reqPath;
-                        }
+                        return stats.isFile || stats.isDirectory ? reqPath : 'index.html';
                     } catch {
-                        // File doesn't exist
+                        // File doesn't exist, serve index.html for SPA routing
+                        return 'index.html';
                     }
-                    return 'index.html';
                 },
             }),
         );
