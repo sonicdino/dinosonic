@@ -80,7 +80,8 @@ export async function generatePlaylistCover(playlistId: string): Promise<string 
         const canvas = new Image(500, 500);
         canvas.fill(averageColor);
 
-        const font = await Deno.readFile("./src/client/public/Dinofiles-font.ttf");
+        const font = await Deno.readFile(new URL('./client/public/Dinofiles-font.ttf', import.meta.url));
+
         await drawPlaylistTitle(canvas, playlist.name, font, textColor);
 
         const finalImage = await canvas.encode(0.8);
