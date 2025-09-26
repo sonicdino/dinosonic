@@ -145,6 +145,37 @@
             </button>
         </div>
 
+        <!-- Transcoding Profiles (Available to all users) -->
+        <div id="transcoding-profiles-section" class="w-full max-w-2xl border border-white p-6 dashboard-container">
+            <h2 class="text-2xl mb-4">Transcoding Profiles</h2>
+
+            <!-- Create Profile (Admin Only) -->
+            <div id="create-profile-section" class="mb-6">
+                <h3 class="text-xl mb-2">Create Profile</h3>
+                <input id="profile-name" type="text" placeholder="Profile Name"
+                    class="w-full p-2 mb-2 bg-inherit border border-white">
+                <input id="profile-format" type="text" placeholder="Format (e.g., mp3, opus)"
+                    class="w-full p-2 mb-2 bg-inherit border border-white">
+                <input id="profile-bitrate" type="number" placeholder="Bitrate (kbps)"
+                    class="w-full p-2 mb-2 bg-inherit border border-white">
+                <input id="profile-client-match" type="text" placeholder="Client Match (regex)"
+                    class="w-full p-2 mb-2 bg-inherit border border-white">
+                <label class="flex items-center mb-2">
+                    <input id="profile-enabled" type="checkbox" class="mr-2">
+                    <span>Enabled</span>
+                </label>
+                <button id="create-profile" class="w-full bg-green-700 p-2 uppercase hover-effect">
+                    Create Profile
+                </button>
+            </div>
+
+            <!-- Profiles List -->
+            <div>
+                <h3 class="text-xl mb-2">Existing Profiles</h3>
+                <ul id="profiles-container" class="list-none"></ul>
+            </div>
+        </div>
+
         <!-- Logout -->
         <div class="w-full max-w-2xl border border-white p-6 dashboard-container">
             <button id="logout-button" class="w-full bg-red-500 p-2 uppercase hover-effect">Logout</button>
@@ -188,6 +219,40 @@
         </div>
     </div>
 
+    <!-- Edit Transcoding Profile Modal -->
+    <div id="edit-profile-modal"
+        class="hidden fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+        <div class="bg-black p-6 border border-white shadow-lg w-full max-w-md">
+            <h2 class="text-xl font-bold mb-4">Edit Transcoding Profile</h2>
+            <div class="mb-4">
+                <label class="block mb-1">Profile Name:</label>
+                <input type="text" id="edit-profile-name" class="bg-inherit border border-white p-2 w-full">
+            </div>
+            <div class="mb-4">
+                <label class="block mb-1">Format (e.g., mp3, opus):</label>
+                <input type="text" id="edit-profile-format" class="bg-inherit border border-white p-2 w-full">
+            </div>
+            <div class="mb-4">
+                <label class="block mb-1">Bitrate (kbps):</label>
+                <input type="number" id="edit-profile-bitrate" class="bg-inherit border border-white p-2 w-full">
+            </div>
+            <div class="mb-4">
+                <label class="block mb-1">Client Match (regex):</label>
+                <input type="text" id="edit-profile-client-match" class="bg-inherit border border-white p-2 w-full">
+            </div>
+            <div class="mb-4">
+                <label class="flex items-center">
+                    <input type="checkbox" id="edit-profile-enabled" class="mr-2">
+                    <span>Enabled</span>
+                </label>
+            </div>
+            <div class="mt-6 flex justify-between">
+                <button id="save-profile" class="bg-green-500 px-4 py-2 hover-effect">Save</button>
+                <button id="close-profile-modal" class="bg-white text-black px-4 py-2 hover-effect">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         document.addEventListener('DOMContentLoaded', async function () {
             const usersContainer = document.getElementById('users-container');
@@ -202,7 +267,18 @@
             const saveUserBtn = document.getElementById('save-user');
             const closeModalBtn = document.getElementById('close-modal');
 
+            // Transcoding Profile Modal Elements
+            const editProfileModal = document.getElementById('edit-profile-modal');
+            const editProfileNameInput = document.getElementById('edit-profile-name');
+            const editProfileFormatInput = document.getElementById('edit-profile-format');
+            const editProfileBitrateInput = document.getElementById('edit-profile-bitrate');
+            const editProfileClientMatchInput = document.getElementById('edit-profile-client-match');
+            const editProfileEnabledInput = document.getElementById('edit-profile-enabled');
+            const saveProfileBtn = document.getElementById('save-profile');
+            const closeProfileModalBtn = document.getElementById('close-profile-modal');
+
             let editingUser = null; // Stores current user being edited
+            let editingProfileId = null; // Stores current profile being edited
 
             async function checkUserPermissions() {
                 const response = await fetch('/api/users');
@@ -505,8 +581,222 @@
                 }
             });
 
+            // Transcoding Profiles Management
+            async function loadTranscodingProfiles() {
+                try {
+                    const response = await fetch('/api/transcoding-profiles');
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    const data = await response.json();
+                    const profilesContainer = document.getElementById('profiles-container');
+
+                    profilesContainer.innerHTML = '';
+
+                    if (data.profiles && data.profiles.length > 0) {
+                        data.profiles.forEach(profile => {
+                            const profileElement = document.createElement('li');
+                            profileElement.classList.add('border', 'p-4', 'mb-2');
+                            profileElement.innerHTML = `
+                                <div class="flex justify-between items-center">
+                                    <div>
+                                        <strong>${profile.name}</strong> - ${profile.format || 'default'} 
+                                        ${profile.bitRate ? `@ ${profile.bitRate}kbps` : ''}
+                                        ${profile.enabled ? '(Enabled)' : '(Disabled)'}
+                                    </div>
+                                    <div>
+                                        <button onclick="editProfile('${profile.id}')" class="bg-blue-500 p-1 ml-2 hover-effect">Edit</button>
+                                        <button onclick="deleteProfile('${profile.id}')" class="bg-red-500 p-1 ml-2 hover-effect">Delete</button>
+                                    </div>
+                                </div>
+                                ${profile.clientMatch ? `<div class="text-sm mt-1">Client Match: ${profile.clientMatch}</div>` : ''}
+                            `;
+                            profilesContainer.appendChild(profileElement);
+                        });
+                    } else {
+                        profilesContainer.innerHTML = '<li class="p-4">No transcoding profiles found</li>';
+                    }
+                } catch (error) {
+                    console.error('Error loading transcoding profiles:', error);
+                    document.getElementById('profiles-container').innerHTML = '<li class="p-4 text-red-500">Error loading profiles</li>';
+                }
+            }
+
+            async function createProfile() {
+                const name = document.getElementById('profile-name').value;
+                const format = document.getElementById('profile-format').value;
+                const bitRate = document.getElementById('profile-bitrate').value;
+                const clientMatch = document.getElementById('profile-client-match').value;
+                const enabled = document.getElementById('profile-enabled').checked;
+
+                if (!name) {
+                    alert('Profile name is required');
+                    return;
+                }
+
+                const profileData = {
+                    name,
+                    format: format || undefined,
+                    bitRate: bitRate ? parseInt(bitRate) : undefined,
+                    clientMatch: clientMatch || undefined,
+                    enabled: enabled
+                };
+
+                try {
+                    const response = await fetch('/api/transcoding-profiles', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(profileData),
+                    });
+
+                    if (response.ok) {
+                        // Clear inputs
+                        document.getElementById('profile-name').value = '';
+                        document.getElementById('profile-format').value = '';
+                        document.getElementById('profile-bitrate').value = '';
+                        document.getElementById('profile-client-match').value = '';
+                        document.getElementById('profile-enabled').checked = false;
+
+                        loadTranscodingProfiles();
+                    } else {
+                        const errorData = await response.json();
+                        alert(`Error: ${errorData.error || 'Failed to create profile'}`);
+                    }
+                } catch (error) {
+                    console.error('Error creating profile:', error);
+                    alert('Error creating profile');
+                }
+            }
+
+            window.editProfile = async function (id) {
+                try {
+                    const response = await fetch(`/api/transcoding-profiles/${id}`);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    const data = await response.json();
+
+                    if (data.profile) {
+                        // Fill the modal with profile data for editing
+                        editingProfileId = id;
+                        editProfileNameInput.value = data.profile.name;
+                        editProfileFormatInput.value = data.profile.format || '';
+                        editProfileBitrateInput.value = data.profile.bitRate || '';
+                        editProfileClientMatchInput.value = data.profile.clientMatch || '';
+                        editProfileEnabledInput.checked = data.profile.enabled;
+
+                        // Show modal
+                        editProfileModal.classList.remove('hidden');
+                    }
+                } catch (error) {
+                    console.error('Error fetching profile for edit:', error);
+                    alert('Error fetching profile for editing');
+                }
+            };
+
+            // Save profile from modal
+            saveProfileBtn.addEventListener('click', async () => {
+                if (!editingProfileId) return;
+
+                const name = editProfileNameInput.value;
+                const format = editProfileFormatInput.value;
+                const bitRate = editProfileBitrateInput.value;
+                const clientMatch = editProfileClientMatchInput.value;
+                const enabled = editProfileEnabledInput.checked;
+
+                if (!name) {
+                    alert('Profile name is required');
+                    return;
+                }
+
+                const profileData = {
+                    name,
+                    format: format || undefined,
+                    bitRate: bitRate ? parseInt(bitRate) : undefined,
+                    clientMatch: clientMatch || undefined,
+                    enabled: enabled
+                };
+
+                try {
+                    const response = await fetch(`/api/transcoding-profiles/${editingProfileId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(profileData),
+                    });
+
+                    if (response.ok) {
+                        // Clear inputs
+                        editProfileNameInput.value = '';
+                        editProfileFormatInput.value = '';
+                        editProfileBitrateInput.value = '';
+                        editProfileClientMatchInput.value = '';
+                        editProfileEnabledInput.checked = false;
+
+                        editingProfileId = null;
+
+                        // Hide modal
+                        editProfileModal.classList.add('hidden');
+
+                        loadTranscodingProfiles();
+                    } else {
+                        const errorData = await response.json();
+                        alert(`Error: ${errorData.error || 'Failed to update profile'}`);
+                    }
+                } catch (error) {
+                    console.error('Error updating profile:', error);
+                    alert('Error updating profile');
+                }
+            });
+
+            // Close profile modal
+            closeProfileModalBtn.addEventListener('click', () => {
+                editProfileModal.classList.add('hidden');
+                editingProfileId = null;
+            });
+
+            // Close modal when clicking outside of it
+            editProfileModal.addEventListener('click', function (event) {
+                if (event.target === editProfileModal) {
+                    editProfileModal.classList.add('hidden');
+                    editingProfileId = null;
+                }
+            });
+
+            window.deleteProfile = async function (id) {
+                if (confirm('Are you sure you want to delete this transcoding profile?')) {
+                    try {
+                        const response = await fetch(`/api/transcoding-profiles/${id}`, {
+                            method: 'DELETE'
+                        });
+
+                        if (response.ok) {
+                            loadTranscodingProfiles();
+                        } else {
+                            const errorData = await response.json();
+                            alert(`Error: ${errorData.error || 'Failed to delete profile'}`);
+                        }
+                    } catch (error) {
+                        console.error('Error deleting profile:', error);
+                        alert('Error deleting profile');
+                    }
+                }
+            };
+
+            // Add event listeners for transcoding profiles
+            document.getElementById('create-profile').addEventListener('click', createProfile);
+
             checkUserPermissions();
             checkStatus();
+
+            // Load transcoding profiles for all users
+            fetch('/api/users')
+                .then(response => response.json())
+                .then(data => {
+                    const currentUser = data.currentUser;
+                    document.getElementById('transcoding-profiles-section').classList.remove('hidden');
+                    loadTranscodingProfiles();
+                })
+                .catch(error => console.error('Error checking user permissions:', error));
         });
     </script>
 </body>

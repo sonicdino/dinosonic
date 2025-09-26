@@ -23,6 +23,7 @@ import {
     Song,
     SongSchema,
     SubsonicUser,
+    TranscodingProfile,
     User,
     UserSchema,
 } from '../../zod.ts';
@@ -31,6 +32,13 @@ import path from 'node:path';
 import { ensureDir } from '@std/fs/ensure-dir';
 import { exists } from '@std/fs/exists';
 import { validateToken } from '../../ListenBrainz.ts';
+import {
+    createTranscodingProfile,
+    updateTranscodingProfile,
+    getTranscodingProfile,
+    getAllTranscodingProfiles,
+    deleteTranscodingProfile
+} from '../../TranscodingProfileManager.ts';
 const api = new Hono();
 
 api.get('/public-stream/:shareId/:itemId', async (c: Context) => {
@@ -558,7 +566,7 @@ api.post('/login', async (c: Context) => {
     const originalPassword = await decryptForTokenAuth(user.backend.password);
     if (password !== originalPassword) return c.json({ error: 'Wrong password' }, 401);
 
-    const token = await generateJWT(user.subsonic);
+    const token = await generateJWT(user.subsonic, user.backend.id);
 
     // Store token in HTTP-only cookie
     setCookie(c.res.headers, {
@@ -675,4 +683,92 @@ api.get('/unlink/listenbrainz', async (c: Context) => {
 
     return c.redirect('/admin/');
 });
+
+// Transcoding Profiles API
+
+// Get all transcoding profiles
+api.get('/transcoding-profiles', async (c: Context) => {
+    const sessionUser = c.get('user') as { user: SubsonicUser; id: string; exp: number };
+
+    try {
+        const profiles = await getAllTranscodingProfiles(sessionUser.id);
+        return c.json({ profiles });
+    } catch (error) {
+        logger.error('Error fetching transcoding profiles:', error);
+        return c.json({ error: 'Failed to fetch transcoding profiles' }, 500);
+    }
+});
+
+// Get a specific transcoding profile
+api.get('/transcoding-profiles/:id', async (c: Context) => {
+    const { id } = c.req.param();
+    const sessionUser = c.get('user') as { user: SubsonicUser; id: string; exp: number };
+    try {
+        const profile = await getTranscodingProfile(sessionUser.id, id);
+        if (!profile) {
+            return c.json({ error: 'Profile not found' }, 404);
+        }
+        return c.json({ profile });
+    } catch (error) {
+        logger.error(`Error fetching transcoding profile ${id}:`, error);
+        return c.json({ error: 'Failed to fetch transcoding profile' }, 500);
+    }
+});
+
+// Create a new transcoding profile
+api.post('/transcoding-profiles', async (c: Context) => {
+    const sessionUser = c.get('user') as { user: SubsonicUser; id: string; exp: number };
+
+    try {
+        const profileData = await c.req.json() as TranscodingProfile;
+        const profile = await createTranscodingProfile(sessionUser.id, profileData);
+
+        if (!profile) {
+            return c.json({ error: 'Invalid profile data' }, 400);
+        }
+
+        logger.info(`Created transcoding profile: ${profile.name} (${profile.id}) for user: ${sessionUser.user.username}`);
+        return c.json({ profile, message: 'Profile created successfully' });
+    } catch (error) {
+        logger.error('Error creating transcoding profile:', error);
+        return c.json({ error: 'Failed to create transcoding profile' }, 500);
+    }
+});
+
+// Update an existing transcoding profile
+api.put('/transcoding-profiles/:id', async (c: Context) => {
+    const { id } = c.req.param();
+    const sessionUser = c.get('user') as { user: SubsonicUser; id: string; exp: number };
+
+    try {
+        const updateData = await c.req.json() as TranscodingProfile;
+        const profile = await updateTranscodingProfile(sessionUser.id, id, updateData);
+
+        if (!profile) {
+            return c.json({ error: 'Profile not found or invalid data' }, 404);
+        }
+
+        logger.info(`Updated transcoding profile: ${profile.name} (${profile.id}) for user: ${sessionUser.user.username}`);
+        return c.json({ profile, message: 'Profile updated successfully' });
+    } catch (error) {
+        logger.error(`Error updating transcoding profile ${id}:`, error);
+        return c.json({ error: 'Failed to update transcoding profile' }, 500);
+    }
+});
+
+// Delete a transcoding profile
+api.delete('/transcoding-profiles/:id', async (c: Context) => {
+    const { id } = c.req.param();
+    const sessionUser = c.get('user') as { user: SubsonicUser; id: string; exp: number };
+
+    try {
+        await deleteTranscodingProfile(sessionUser.id, id);
+        logger.info(`Deleted transcoding profile: ${id} for user: ${sessionUser.user.username}`);
+        return c.json({ message: 'Profile deleted successfully' });
+    } catch (error) {
+        logger.error(`Error deleting transcoding profile ${id}:`, error);
+        return c.json({ error: 'Failed to delete transcoding profile' }, 500);
+    }
+});
+
 export default api;

@@ -4,6 +4,7 @@ import { Song } from '../../zod.ts';
 import * as path from '@std/path';
 import { ensureDir } from '@std/fs/ensure-dir';
 import { exists } from '@std/fs/exists';
+import { getMatchingProfile } from '../../TranscodingProfileManager.ts';
 
 const stream = new Hono();
 
@@ -34,23 +35,26 @@ async function serveFile(c: Context, filePath: string, contentType: string) {
         c.header('Content-Length', `${contentLength}`);
         c.header('Cache-Control', 'public, max-age=86400');
 
-        if (status === 206) {
-            c.header('Content-Range', `bytes ${start}-${end}/${size}`);
-        }
+        if (status === 206) c.header('Content-Range', `bytes ${start}-${end}/${size}`);
 
         await file.seek(start, Deno.SeekMode.Start);
 
         const readable = new ReadableStream({
             async pull(controller) {
+                if (controller.desiredSize === null) {
+                    file.close();
+                    return;
+                }
+
                 const buffer = new Uint8Array(64 * 1024);
                 try {
                     const bytesRead = await file.read(buffer);
                     if (bytesRead === null || bytesRead === 0) {
                         controller.close();
                         file.close();
-                    } else {
-                        controller.enqueue(buffer.subarray(0, bytesRead));
+                        return;
                     }
+                    controller.enqueue(buffer.subarray(0, bytesRead));
                 } catch (e) {
                     logger.error(`Error reading file stream for ${filePath}: ${e}`);
                     controller.error(e);
@@ -82,11 +86,29 @@ async function handleStream(c: Context) {
     const track = (await database.get(['tracks', id])).value as Song | null;
     if (!track) return createResponse(c, {}, 'failed', { code: 70, message: 'Song not found' });
 
-    const format = await getField(c, 'format') || 'original';
-    const maxBitRate = parseInt(await getField(c, 'maxBitRate') || '0');
+    // Check for matching transcoding profile based on client info and user
+    const clientName = await getField(c, 'c');
+    const profile = await getMatchingProfile(isValidated.id, { clientName });
+
+    let format = await getField(c, 'format') || 'original';
+    let maxBitRate = parseInt(await getField(c, 'maxBitRate') || '0');
     const timeOffset = parseInt(await getField(c, 'timeOffset') || '0');
 
-    const isTranscoding = format !== 'original' || maxBitRate > 0;
+    if (format === 'raw') format = 'original';
+
+    if (profile) {
+        if (format === 'original' && profile.format) {
+            format = profile.format;
+        }
+        if (maxBitRate === 0 && profile.bitRate) {
+            maxBitRate = profile.bitRate;
+        }
+        if (profile.bitRate && maxBitRate > profile.bitRate) {
+            maxBitRate = profile.bitRate;
+        }
+    }
+
+    const isTranscoding = (format !== 'original') || maxBitRate > 0;
 
     if (!isTranscoding) {
         return serveFile(c, track.subsonic.path, track.subsonic.contentType || 'audio/mpeg');

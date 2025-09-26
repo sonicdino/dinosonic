@@ -38,8 +38,8 @@ const generateOrGetKey = async () => {
     }
 };
 
-export const generateJWT = async (user: SubsonicUser): Promise<string> => {
-    const payload = { user, exp: Math.floor(Date.now() / 1000) + 60 * 60 }; // 1 hour expiry
+export const generateJWT = async (user: SubsonicUser, id: string): Promise<string> => {
+    const payload = { user, id, exp: Math.floor(Date.now() / 1000) + 60 * 60 }; // 1 hour expiry
     const key = await generateOrGetKey();
     return await create({ alg: 'HS512', typ: 'JWT' }, payload, key);
 };

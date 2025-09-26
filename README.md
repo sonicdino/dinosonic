@@ -17,10 +17,15 @@ inspired by the Subsonic API.
     -   Supports OAuth-based Last.fm scrobbling on a per-user basis.
     -   Synchronizes local starred tracks with Last.fm "loved" tracks, respecting timestamps for conflict resolution. Star/unstar actions in Dinosonic can immediately update Last.fm.
 -   **Spotify Integration** – Fetches artist cover art from Spotify.
+-   **ListenBrainz Scrobbling** – Supports scrobbling to ListenBrainz.
+-   **Playlist Cover Generation** – Automatically generates cover art for playlists based on the first track's album art.
 -   **User-Specific Data** – Tracks starred items, play counts, and ratings per user.
+-   **Transcoding Profiles** – Per-user transcoding profiles with customizable audio format, bitrate, and client-specific settings.
 -   **Admin Panel** – Web interface for:
-    -   Managing users (create, edit permissions, delete).
+    -   Managing users (create, edit permissions, delete, admin user only).
     -   Linking/unlinking user Last.fm accounts for scrobbling and sync.
+    -   Managing transcoding profiles: create, edit, and delete custom transcoding profiles per user.
+-   **Custom Web Frontend Support** – Serve any plain HTML, CSS, and JS frontend from the ui/ folder.
 -   **Docker Support** – Easy deployment with environment variables.
 -   **Standalone Executable** – Runs as a single executable with no external runtime dependencies (once compiled).
 
@@ -245,6 +250,7 @@ client_secret = "your_spotify_client_secret"
 ## API & Admin Panel
 
 -   **Subsonic API** – Compatible with existing Subsonic clients. Key OpenSubsonic extensions like `formPost`, `songLyrics`, and `transcodeOffset` are supported.
+-   **Transcoding Profiles** – Per-user transcoding profiles that allow custom audio format, bitrate, and client-specific settings.
 -   **Admin Panel** – Available at `http://localhost:<DINO_PORT>/admin/`.
     -   Manage users: create, edit permissions (admin, settings, download, stream, scrobbling, etc.), delete.
     -   Link/Unlink personal Last.fm account for scrobbling and loved track synchronization.
@@ -254,11 +260,9 @@ client_secret = "your_spotify_client_secret"
 
 ## Roadmap
 
--   **ListenBrainz Scrobbling**
--   **Custom front-end theme/styling options set by the admin**
 -   **More detailed statistics in the Admin Panel**
-<!-- -   **Device-Specific Transcoding Profiles** (currently global or per-request) -->
-
+-   **Fully support music folders (Currently not supported right now, probably have to emulate it to be easier)**
+-   **Maybe fix XML generation issues (Unlikely)**
 ---
 
 ## Contributing

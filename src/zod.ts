@@ -18,6 +18,15 @@ export const CoverArtSchema = z.object({
     path: z.string(),
 });
 
+export const TranscodingProfileSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+    format: z.string(), // e.g., 'mp3', 'opus', 'aac'
+    bitRate: z.number().optional(), // in kbps
+    clientMatch: z.string().optional(), // regex to match client/user agent
+    enabled: z.boolean().default(true),
+});
+
 export const ConfigTranscodingOptionSchema = z.object({
     enabled: z.boolean().default(true),
     ffmpeg_path: z.string().default('ffmpeg'),
@@ -329,6 +338,7 @@ export const ShareSchema = z.object({
 
 export type userData = z.infer<typeof userDataSchema>;
 export type CoverArt = z.infer<typeof CoverArtSchema>;
+export type TranscodingProfile = z.infer<typeof TranscodingProfileSchema>;
 export type ConfigTranscodingOption = z.infer<typeof ConfigTranscodingOptionSchema>;
 export type ConfigLastFMOption = z.infer<typeof ConfigLastFMOptionSchema>;
 export type Config = z.infer<typeof ConfigSchema>;
