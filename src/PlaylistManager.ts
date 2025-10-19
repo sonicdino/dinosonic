@@ -1,152 +1,171 @@
-import { Image, TextLayout } from "@matmen/imagescript";
+// PlaylistManager.ts
+import PImage from "pureimage";
 import { config, database, logger } from "./util.ts";
-import { CoverArt, CoverArtSchema, Playlist, PlaylistSchema, Song } from './zod.ts';
-import { join } from '@std/path';
-import { exists } from '@std/fs';
+import { CoverArt, CoverArtSchema, Playlist, PlaylistSchema, Song } from "./zod.ts";
+import { join } from "@std/path";
+import { exists } from "@std/fs";
+import fs from "node:fs";
+
+const CANVAS_SIZE = 500;
 
 /**
- * Renders the playlist title onto the canvas, automatically handling wrapping and font-size adjustment.
+ * Compute average color by sampling a 1×1 downscaled JPEG.
  */
-function drawPlaylistTitle(canvas: Image, title: string, font: Uint8Array, textColor: number) {
-    const maxWidth = 450;
-    const maxHeight = 450;
-    let fontSize = 64;
-
-    let finalTextImage: Image | null = null;
-
-    while (fontSize > 10) {
-        const layout = new TextLayout({ maxWidth: maxWidth, wrapStyle: 'word' });
-        const renderedText = Image.renderText(font, fontSize, title, textColor, layout);
-
-        if (renderedText.height <= maxHeight) {
-            finalTextImage = renderedText;
-            break;
-        }
-        fontSize -= 4;
-    }
-
-    if (!finalTextImage) {
-        const layout = new TextLayout({ maxWidth: maxWidth, wrapStyle: 'word' });
-        finalTextImage = Image.renderText(font, 10, title, textColor, layout);
-    }
-
-    const x = (canvas.width - finalTextImage.width) / 2;
-    const y = (canvas.height - finalTextImage.height) / 2;
-    canvas.composite(finalTextImage, x, y);
+async function getAverageColor(coverArtPath: string): Promise<[number, number, number]> {
+    const img = await PImage.decodeJPEGFromStream(fs.createReadStream(coverArtPath));
+    const thumb = PImage.make(1, 1);
+    const ctx = thumb.getContext("2d");
+    ctx.drawImage(img, 0, 0, 1, 1);
+    const { data } = ctx.getImageData(0, 0, 1, 1);
+    return [data[0], data[1], data[2]];
 }
 
 /**
- * Main function to generate and save a playlist cover art.
- * It creates a blurred background from the first song's album art and overlays the playlist title.
- * @param playlistId The ID of the playlist to generate a cover for.
- * @returns The relative path for the DB (e.g., "playlist/123.jpg") or null if it failed.
+ * Draw playlist title centered, auto-sized, and word-wrapped.
+ */
+function drawPlaylistTitle(ctx: PImage.Context, title: string, textColor: string) {
+    const maxWidth = 450, maxHeight = 450;
+    let fontSize = 64;
+    let lines: string[] = [];
+
+    const wrap = (t: string): string[] => {
+        const words = t.split(/\s+/);
+        const out: string[] = [];
+        let line = "";
+        for (const w of words) {
+            const test = line ? `${line} ${w}` : w;
+            const { width } = ctx.measureText(test);
+            if (width <= maxWidth) line = test;
+            else {
+                if (line) out.push(line);
+                line = w;
+            }
+        }
+        if (line) out.push(line);
+        return out;
+    };
+
+    while (fontSize > 10) {
+        ctx.font = `${fontSize}px Dinofiles`;
+        lines = wrap(title);
+        if (lines.length * fontSize * 1.2 <= maxHeight) break;
+        fontSize -= 4;
+    }
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = textColor;
+
+    const totalH = lines.length * fontSize * 1.2;
+    let y = (CANVAS_SIZE - totalH) / 2 + fontSize / 2;
+    for (const line of lines) {
+        ctx.fillStyle = "rgba(0,0,0,0.25)";
+        ctx.fillText(line, CANVAS_SIZE / 2 + 2, y + 2);
+        ctx.fillStyle = textColor;
+        ctx.fillText(line, CANVAS_SIZE / 2, y);
+        y += fontSize * 1.2;
+    }
+}
+
+/**
+ * Generate and save cover art as PNG.
  */
 export async function generatePlaylistCover(playlistId: string): Promise<string | null> {
     try {
         const playlist = (await database.get(["playlists", playlistId])).value as Playlist | null;
-        if (!playlist?.entry || playlist.entry.length === 0) {
-            console.error(`[Cover Art] Playlist ${playlistId} not found or is empty.`);
+        if (!playlist?.entry?.length) {
+            logger.error(`[Cover Art] Playlist ${playlistId} not found or empty.`);
             return null;
         }
 
         const firstTrackId = playlist.entry[0] as string;
         const track = (await database.get(["tracks", firstTrackId])).value as Song | null;
         if (!track?.subsonic.albumId) {
-            console.error(`[Cover Art] Track ${firstTrackId} or its albumId not found.`);
+            logger.error(`[Cover Art] Track ${firstTrackId} missing albumId.`);
             return null;
         }
 
         const coverArtQ = (await database.get(["covers", track.subsonic.albumId])).value as CoverArt | null;
         if (!coverArtQ) {
-            console.error(`[Cover Art] Album ${track.subsonic.albumId} has no cover art specified.`);
+            logger.error(`[Cover Art] Album ${track.subsonic.albumId} has no cover art.`);
             return null;
         }
 
-        const coverArtPath = coverArtQ.path;
 
-        const coverArtData = await Deno.readFile(coverArtPath);
-        const coverArt = await Image.decode(coverArtData);
+        const [r, g, b] = await getAverageColor(coverArtQ.path);
+        const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+        const textColor = luminance > 128 ? "#000000" : "#ffffff";
 
-        coverArt.resize(1, 1);
-        const averageColor = coverArt.getPixelAt(1, 1);
+        const img = PImage.make(CANVAS_SIZE, CANVAS_SIZE);
+        const ctx = img.getContext("2d");
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
-        const [r, g, b] = Image.colorToRGBA(averageColor);
-        const luminance = (0.299 * r + 0.587 * g + 0.114 * b);
+        const fontPath = new URL("./client/public/Dinofiles-font.ttf", import.meta.url).pathname;
+        const font = PImage.registerFont(fontPath, "Dinofiles");
+        await font.load();
+        drawPlaylistTitle(ctx, playlist.name, textColor);
 
-        // If luminance > 128, the background is light, so use black text. Otherwise, use white text.
-        // Colors are in RGBA format (0xRRGGBBAA)
-        const textColor = luminance > 128 ? 0x000000FF : 0xFFFFFFFF;
-
-        const canvas = new Image(500, 500);
-        canvas.fill(averageColor);
-
-        const font = await Deno.readFile(new URL('./client/public/Dinofiles-font.ttf', import.meta.url));
-
-        await drawPlaylistTitle(canvas, playlist.name, font, textColor);
-
-        const finalImage = await canvas.encode(0.8);
-        const coversDir = join(config.data_folder, 'covers');
+        const coversDir = join(config.data_folder, "covers");
         await Deno.mkdir(coversDir, { recursive: true }).catch(() => { });
+        const finalPath = join(coversDir, `${playlistId}.png`);
 
-        const finalFilename = `${playlistId}.jpg`;
-        const finalPath = join(coversDir, finalFilename);
+        const out = fs.createWriteStream(finalPath);
+        await PImage.encodeJPEGToStream(img, out)
+            .then(() => {
+                out.end(); // ensure stream flushes
+            })
+            .catch((err) => {
+                console.error("[Cover Art] PNG encode error:", err);
+            });
 
-        await Deno.writeFile(finalPath, finalImage);
+        await new Promise<void>((resolve, reject) => {
+            out.on("finish", resolve);
+            out.on("error", reject);
+        });
+
+        console.log("[Cover Art] Finished writing:", finalPath);
+
 
         return finalPath;
-
-    } catch (error) {
-        console.error(`[Cover Art] A critical error occurred while generating cover for playlist ${playlistId}:`, error);
+    } catch (err) {
+        logger.error(`[Cover Art] Failed to generate cover for ${playlistId}:`, err);
         return null;
     }
 }
 
 /**
- * A centralized function to check and update the cover art for a specific playlist.
- * This should be called whenever a playlist is created or its contents/name change.
- *
- * @param playlistId The ID of the playlist to check.
- * @returns true if changes were made, false otherwise.
+ * Check and update cover art for playlist.
  */
 export async function updatePlaylistCover(playlistId: string): Promise<boolean> {
     const playlistEntry = await database.get(["playlists", playlistId]);
     const playlistParse = PlaylistSchema.safeParse(playlistEntry.value);
-
     if (!playlistParse.success) {
-        logger.warn(`[PlaylistManager] Could not find or parse playlist with ID: ${playlistId}`);
+        logger.warn(`[PlaylistManager] Invalid playlist ${playlistId}`);
         return false;
     }
 
     const playlist = playlistParse.data;
-    let coverExistsAndIsValid = false;
-
     const coverEntry = await database.get(["covers", playlist.id]);
     const coverParse = CoverArtSchema.safeParse(coverEntry.value);
-    if (coverParse.success && await exists(coverParse.data.path)) {
-        coverExistsAndIsValid = true;
-    } else {
-        logger.warn(`[PlaylistManager] Playlist ${playlist.id} has cover ID ${playlist.id}, but the file is missing or invalid. Will regenerate.`);
-    }
+    const valid = coverParse.success && await exists(coverParse.data.path);
 
-    if (!coverExistsAndIsValid) {
-        const newCoverPath = await generatePlaylistCover(playlist.id);
+    if (valid) return false;
 
-        if (newCoverPath) {
-            const newCover = CoverArtSchema.safeParse({
-                id: playlist.id,
-                mimeType: 'image/jpeg',
-                path: newCoverPath,
-            });
+    const newCoverPath = await generatePlaylistCover(playlist.id);
+    if (!newCoverPath) return false;
 
-            if (newCover.success) {
-                await database.set(['covers', playlist.id], newCover.data);
-                playlist.coverArt = playlist.id;
-                await database.set(['playlists', playlist.id], playlist);
-                logger.info(`[PlaylistManager] Generated and saved new cover for playlist "${playlist.name}".`);
-                return true;
-            }
-        }
-    }
+    const newCover = CoverArtSchema.safeParse({
+        id: playlist.id,
+        mimeType: "image/png",
+        path: newCoverPath,
+    });
 
-    return false;
+    if (!newCover.success) return false;
+    await database.set(["covers", playlist.id], newCover.data);
+    playlist.coverArt = playlist.id;
+    await database.set(["playlists", playlist.id], playlist);
+
+    logger.info(`[PlaylistManager] Generated and saved new cover for "${playlist.name}".`);
+    return true;
 }
