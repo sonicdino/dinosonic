@@ -11,13 +11,22 @@ async function handlegetAlbumList(c: Context) {
     const type = await getField(c, 'type');
     const size = parseInt(await getField(c, 'size') || '10');
     const offset = parseInt(await getField(c, 'offset') || '0');
-    const fromYear = parseInt(await getField(c, 'fromYear') || '0');
-    const toYear = parseInt(await getField(c, 'toYear') || '0');
     const genre = await getField(c, 'genre');
 
+    let fromYear: number, toYear: number;
+
     if (!type) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'type'" });
-    if ((type === 'byYear' && !fromYear)) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'fromYear'" });
-    if ((type === 'byYear' && !toYear)) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'toYear'" });
+    if (type === 'byYear') {
+        const fromYearStr = await getField(c, 'fromYear');
+        const toYearStr = await getField(c, 'toYear');
+
+        if (!fromYearStr) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'fromYear'" });
+        if (!toYearStr) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'toYear'" });
+
+        fromYear = parseInt(fromYearStr);
+        toYear = parseInt(toYearStr);
+
+    }
     if (type === 'byGenre' && !genre) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'genre'" });
 
     const user = await getUserByUsername(isValidated.username);

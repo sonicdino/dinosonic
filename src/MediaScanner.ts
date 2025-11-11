@@ -96,8 +96,6 @@ export async function hardReset() {
         ['covers'],
         ['filePathToId'],
         ['shares'],
-        // ['counters'] was removed as per your version, but if needed, add back.
-        // Be cautious if other parts of the system rely on counters without re-initializing them.
     ];
 
     for (const prefix of prefixesToClear) {
@@ -113,7 +111,7 @@ export async function hardReset() {
     artistNameToIdCache.clear();
     albumNameArtistToIdCache.clear();
 
-    await cleanupDatabase(); // Run cleanup after clearing main data.
+    await cleanupDatabase();
     logger.info('Hard reset done. Starting scan now...');
     await scanMediaDirectories(config.music_folders);
 }
@@ -809,7 +807,7 @@ async function handleLastFMMetadata() {
             const currentArtistInfo = artist.artistInfo;
             const newArtistInfoData = {
                 id: artist.artist.id,
-                biography: lfmData.bio?.summary || '', // Only summary, default to ""
+                biography: lfmData.bio?.summary || '',
                 musicBrainzId: lfmData.mbid || artist.artist.musicBrainzId,
                 lastFmUrl: lfmData.url,
                 smallImageUrl: sShareId
@@ -987,10 +985,7 @@ export async function syncUserLovedTracksWithTimestamp(user: User, lastFMUsernam
         return;
     }
     logger.info(`🔄 Starting LFM loved tracks sync for user ${lastFMUsername}...`);
-    if (!(await checkInternetConnection())) {
-        logger.warn(`LFM Sync for ${lastFMUsername}: No internet.`);
-        return;
-    }
+    if (!(await checkInternetConnection())) return logger.warn(`LFM Sync for ${lastFMUsername}: No internet.`);
 
     const remoteLovedMap = await getUserLovedTracksMap(lastFMUsername);
     if (remoteLovedMap === null) {
@@ -1083,7 +1078,6 @@ export async function syncUserLovedTracksWithTimestamp(user: User, lastFMUsernam
         }
     }
 
-    // Process tracks loved on Last.fm but not encountered in local user data iteration
     for (const [remoteKey, remoteLoveTimestampUTS] of remoteLovedMap.entries()) {
         if (!processedRemote.has(remoteKey)) {
             const [artistLower, titleLower] = remoteKey.split('||');
@@ -1160,6 +1154,7 @@ export async function syncAllConfiguredUsersFavoritesToLastFM() {
 export function GetScanStatus(): ScanStatus {
     return scanStatus;
 }
+
 export function StartScan(): ScanStatus {
     scanMediaDirectories(config.music_folders).catch((err) => {
         logger.error('Error during StartScan -> scanMediaDirectories:', err);

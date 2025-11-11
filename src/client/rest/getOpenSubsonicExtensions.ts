@@ -18,6 +18,14 @@ function handlegetOpenSubsonicExtensions(c: Context) {
                 name: 'transcodeOffset',
                 versions: [1],
             },
+            {
+                name: 'songLyrics',
+                versions: [1],
+            },
+            {
+                name: 'indexBasedQueue',
+                versions: [1],
+            }
         ],
     }, 'ok');
 }

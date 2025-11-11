@@ -112,54 +112,121 @@ async function handlegetSimilarSongs(c: Context) {
         const albumEntry = await database.get(['albums', seedItemId]);
         if (albumEntry.value) {
             const album = AlbumSchema.parse(albumEntry.value).subsonic;
-            // Only take one song from the same album to encourage diversity
             for (const songIdOrObj of album.song) {
                 const songId = typeof songIdOrObj === 'string' ? songIdOrObj : (songIdOrObj as SongID3).id;
                 if (!seedSongs.some(s => s.id === songId)) {
                     const trackEntry = await database.get(['tracks', songId]);
                     if (trackEntry.value) {
                         const songData = SongSchema.parse(trackEntry.value);
-                        relatedButNotSeedSongs.push({ song: await enrichSongWithUserData(songData.subsonic, user.backend.id), score: 60 }); // Moderate score for same album
-                        break; // Only add one song from the same album
+                        relatedButNotSeedSongs.push({ song: await enrichSongWithUserData(songData.subsonic, user.backend.id), score: 60 });
+                        break;
                     }
                 }
             }
         }
     } else if (itemType === 'artist') {
-        // Only take one song from the same artist to encourage diversity
         for await (const trackEntryIterator of database.list({ prefix: ['tracks'] })) {
             const songParseResult = SongSchema.safeParse(trackEntryIterator.value);
             if (songParseResult.success) {
                 const songData = songParseResult.data;
                 if (songData.subsonic.artists.some(a => a.id === seedItemId) && !seedSongs.some(s => s.id === songData.subsonic.id)) {
-                    relatedButNotSeedSongs.push({ song: await enrichSongWithUserData(songData.subsonic, user.backend.id), score: 50 }); // Moderate score for same artist
-                    break; // Only add one song from the same artist
+                    relatedButNotSeedSongs.push({ song: await enrichSongWithUserData(songData.subsonic, user.backend.id), score: 50 });
+                    break;
                 }
             }
         }
     }
 
     const combinedScoredSongs = [...relatedButNotSeedSongs, ...scoredSongs.filter(item => item.score > 0)];
-    const finalRankedSongs = combinedScoredSongs
-        .sort((a, b) => b.score - a.score)
-        .map(item => item.song);
 
-    const uniqueSongs: SongID3[] = [];
-    const seenIds = new Set<string>();
-    for (const song of finalRankedSongs) {
-        if (!seenIds.has(song.id)) {
-            uniqueSongs.push(song);
-            seenIds.add(song.id);
-        }
-    }
-
-    const shuffledResult = shuffleArray(uniqueSongs.slice(0, count));
+    // Apply diversity-aware selection instead of simple sorting
+    const diverseSelection = selectDiverseSongs(combinedScoredSongs, count * 2); // Get more candidates
+    const finalSelection = diverseSelection.slice(0, count);
+    const shuffledResult = shuffleArray(finalSelection);
 
     return createResponse(c, {
         [/(getSimilarSongs2|getSimilarSongs2\.view)$/.test(c.req.path) ? 'similarSongs2' : 'similarSongs']: {
             song: shuffledResult,
         },
     }, 'ok');
+}
+
+/**
+ * Selects songs with enforced diversity constraints
+ * Limits how many songs per artist/album can appear in the final list
+ * Demoing this approach to improve variety in similar songs. Testing this in PROD Environment. Might go back to simpler method later if not good.
+ */
+function selectDiverseSongs(
+    scoredSongs: { song: SongID3, score: number }[],
+    targetCount: number
+): SongID3[] {
+    // Sort by score first
+    const sorted = [...scoredSongs].sort((a, b) => b.score - a.score);
+
+    const selected: SongID3[] = [];
+    const artistCount = new Map<string, number>();
+    const albumCount = new Map<string, number>();
+
+    // Configurable diversity limits
+    const MAX_SONGS_PER_ARTIST = 3; // Max songs from same artist
+    const MAX_SONGS_PER_ALBUM = 2;  // Max songs from same album
+
+    // First pass: select high-scoring songs with diversity constraints
+    for (const item of sorted) {
+        if (selected.length >= targetCount) break;
+
+        const song = item.song;
+        const artistIds = song.artists.map(a => a.id);
+        const albumId = song.albumId || 'unknown';
+
+        // Check if adding this song would violate diversity constraints
+        const wouldExceedArtistLimit = artistIds.some(artistId =>
+            (artistCount.get(artistId) || 0) >= MAX_SONGS_PER_ARTIST
+        );
+        const wouldExceedAlbumLimit = (albumCount.get(albumId) || 0) >= MAX_SONGS_PER_ALBUM;
+
+        if (!wouldExceedArtistLimit && !wouldExceedAlbumLimit) {
+            selected.push(song);
+
+            // Update counts
+            for (const artistId of artistIds) {
+                artistCount.set(artistId, (artistCount.get(artistId) || 0) + 1);
+            }
+            albumCount.set(albumId, (albumCount.get(albumId) || 0) + 1);
+        }
+    }
+
+    // Second pass: if we haven't hit target, relax constraints slightly
+    if (selected.length < targetCount) {
+        const RELAXED_MAX_ARTIST = 4;
+        const RELAXED_MAX_ALBUM = 3;
+
+        for (const item of sorted) {
+            if (selected.length >= targetCount) break;
+
+            const song = item.song;
+            if (selected.some(s => s.id === song.id)) continue; // Already selected
+
+            const artistIds = song.artists.map(a => a.id);
+            const albumId = song.albumId || 'unknown';
+
+            const wouldExceedRelaxedArtist = artistIds.some(artistId =>
+                (artistCount.get(artistId) || 0) >= RELAXED_MAX_ARTIST
+            );
+            const wouldExceedRelaxedAlbum = (albumCount.get(albumId) || 0) >= RELAXED_MAX_ALBUM;
+
+            if (!wouldExceedRelaxedArtist && !wouldExceedRelaxedAlbum) {
+                selected.push(song);
+
+                for (const artistId of artistIds) {
+                    artistCount.set(artistId, (artistCount.get(artistId) || 0) + 1);
+                }
+                albumCount.set(albumId, (albumCount.get(albumId) || 0) + 1);
+            }
+        }
+    }
+
+    return selected;
 }
 
 async function enrichSongWithUserData(song: SongID3, userId: string): Promise<SongID3> {
@@ -174,9 +241,9 @@ async function enrichSongWithUserData(song: SongID3, userId: string): Promise<So
 
 function shuffleArray<T>(array: T[]): T[] {
     return array
-        .map((item) => ({ item, rand: Math.random() })) // Assign random values
-        .sort((a, b) => a.rand - b.rand) // Sort by random values
-        .map(({ item }) => item); // Extract items
+        .map((item) => ({ item, rand: Math.random() }))
+        .sort((a, b) => a.rand - b.rand)
+        .map(({ item }) => item);
 }
 
 function calculateSimilarity(
@@ -187,61 +254,68 @@ function calculateSimilarity(
 ): number {
     let score = 0;
 
-    // Genre matching - keep this high as it's important for musical coherence
+    // Genre matching - most important for musical coherence
     if (baseSong.genre && candidate.genre && baseSong.genre.toLowerCase() === candidate.genre.toLowerCase()) {
-        score += 15;
+        score += 20;
     } else if (baseSong.genres && candidate.genres && baseSong.genres.some(g1 => candidate.genres!.some(g2 => g1.name.toLowerCase() === g2.name.toLowerCase()))) {
-        score += 12;
+        score += 15;
     }
 
-    // Artist matching - reduced to encourage diversity
+    // Artist matching - significantly reduced to encourage diversity
     const baseArtistIds = new Set(baseSong.artists.map(a => a.id));
     const candidateArtistIds = new Set(candidate.artists.map(a => a.id));
     const commonArtists = [...baseArtistIds].filter(id => candidateArtistIds.has(id));
 
     if (commonArtists.length > 0) {
-        score += 6; // Reduced to encourage artist diversity
+        score += 4; // Reduced from 6
         if (commonArtists.length === baseArtistIds.size && baseArtistIds.size > 0) {
-            score += 3; // Small bonus for exact artist match
+            score += 2; // Reduced from 3
         }
-        // Seed-specific artist boost - minimal to maintain some context
+        // Only boost if seed is specifically an artist
         if (seedType === 'artist' && candidateArtistIds.has(seedItemId)) {
-            score += 8;
+            score += 6; // Reduced from 8
         }
     }
 
-    // Album matching - reduced to encourage cross-album exploration
+    // Album matching - minimal bonus
     if (baseSong.albumId && candidate.albumId === baseSong.albumId) {
-        score += 3; // Reduced to encourage album diversity
-        // Seed-specific album boost - minimal
+        score += 2; // Reduced from 3
         if (seedType === 'album' && candidate.albumId === seedItemId) {
-            score += 8;
+            score += 6; // Reduced from 8
         }
     }
 
-    // BPM matching - from old function
-    if (baseSong.bpm && candidate.bpm && Math.abs(baseSong.bpm - candidate.bpm) <= 10) {
-        score += 10;
+    // BPM matching - good for energy/tempo similarity
+    if (baseSong.bpm && candidate.bpm) {
+        const bpmDiff = Math.abs(baseSong.bpm - candidate.bpm);
+        if (bpmDiff <= 5) score += 12;
+        else if (bpmDiff <= 10) score += 8;
+        else if (bpmDiff <= 20) score += 4;
     }
 
-    // Year proximity - from old function with slight adjustment
+    // Year proximity - helps maintain era consistency
     if (baseSong.year && candidate.year) {
         const yearDiff = Math.abs(baseSong.year - candidate.year);
-        if (yearDiff <= 5) score += 5;
-        else if (yearDiff <= 10) score += 3;
+        if (yearDiff <= 3) score += 8;
+        else if (yearDiff <= 7) score += 5;
+        else if (yearDiff <= 15) score += 2;
     }
 
-    // User preference factors - high importance for quality
-    if (baseSong.starred && candidate.starred) score += 20; // From old function
+    // User preference factors - high importance
+    if (baseSong.starred && candidate.starred) score += 25;
 
-    if (baseSong.userRating && candidate.userRating && Math.abs(baseSong.userRating - candidate.userRating) <= 1) {
-        score += 15; // From old function
+    if (baseSong.userRating && candidate.userRating) {
+        const ratingDiff = Math.abs(baseSong.userRating - candidate.userRating);
+        if (ratingDiff === 0) score += 20;
+        else if (ratingDiff <= 1) score += 15;
+        else if (ratingDiff <= 2) score += 8;
     }
 
-    // Play count factor - from old function with improvements
+    // Play count similarity
     if (baseSong.playCount && candidate.playCount) {
         const playDiff = Math.abs(baseSong.playCount - candidate.playCount);
-        score += Math.max(0, 20 - (playDiff / 10)); // From old function
+        const playSimilarity = Math.max(0, 20 - (playDiff / 5));
+        score += playSimilarity;
     }
 
     return score;

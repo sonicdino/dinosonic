@@ -183,7 +183,7 @@ chmod +x dinosonic-linux-x86 # or dinosonic-mac-x86, etc.
 # $env:DINO_DATA_FOLDER = "C:\\dinosonic_data"
 # $env:DINO_MUSIC_FOLDERS = "C:\\music"
 # ... and so on
-# .\\dinosonic-win-x86.exe
+# .\dinosonic-win-x86.exe
 ```
 
 </details>

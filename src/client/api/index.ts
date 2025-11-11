@@ -410,13 +410,14 @@ api.get('/status', async (c: Context) => {
     if (!user) return c.json({ error: 'User not found. Try relogging.' }, 401);
 
     return c.json({
-        lastFMScrobblingEnabled: config.last_fm?.enable_scrobbling,
-        listenBrainzScrobblingEnabled: config.listenbrainz?.enable_scrobbling,
+        lastFMScrobblingEnabled: user.subsonic.scrobblingEnabled || config.last_fm?.enable_scrobbling,
+        listenBrainzScrobblingEnabled: user.subsonic.scrobblingEnabled || config.listenbrainz?.enable_scrobbling,
         lastfm: !!user.backend.lastFMSessionKey,
         listenBrainz: !!user.backend.listenBrainzToken,
     });
 });
 
+// This is only an API endpoint for a reason. Admins only. Use with caution.
 api.get('/hardReset', (c: Context) => {
     const sessionUser = c.get('user') as { user: SubsonicUser; exp: number };
     if (!sessionUser.user.adminRole) return c.json({ error: 'Unauthorized' }, 403);
@@ -432,8 +433,8 @@ api.get('/users', async (c: Context) => {
 
     if (!sessionUser.user.adminRole) {
         return c.json({
-            currentUser: sessionUser.user, // Include current user info
-            users: [sessionUser.user], // Non-admins only see themselves
+            currentUser: sessionUser.user,
+            users: [sessionUser.user]
         });
     }
 
