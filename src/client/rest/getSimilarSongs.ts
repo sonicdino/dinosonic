@@ -1,5 +1,6 @@
 import { Context, Hono } from '@hono/hono';
 import { createResponse, database, getField, getUserByUsername, validateAuth, logger } from '../../util.ts';
+import { getSimilarTracks } from '../../LastFM.ts';
 import { AlbumSchema, ArtistSchema, Song, SongID3, SongSchema, userData } from '../../zod.ts';
 
 const getSimilarSongs = new Hono();
@@ -107,6 +108,42 @@ async function handlegetSimilarSongs(c: Context) {
             })
     );
 
+    // Fetch Last.fm similar tracks for the seed songs to boost relevant tracks
+    const lastFmBoosts: Map<string, number> = new Map();
+    if (seedSongs.length > 0) {
+        logger.debug('Fetching Last.fm similar tracks for seed songs...');
+        for (const seedSong of seedSongs) {
+            try {
+                const lastFmSimilar = await getSimilarTracks(seedSong.artist, seedSong.title, 50);
+                for (const lastFmTrack of lastFmSimilar) {
+                    // Try to find matching songs in library
+                    for (const librarySong of allLibrarySongs) {
+                        const libArtist = librarySong.subsonic.artist.toLowerCase();
+                        const libTitle = librarySong.subsonic.title.toLowerCase();
+                        const lfmArtist = lastFmTrack.artist.toLowerCase();
+                        const lfmName = lastFmTrack.name.toLowerCase();
+
+                        if (libArtist === lfmArtist && libTitle === lfmName) {
+                            // Boost score based on Last.fm match percentage
+                            const boostAmount = lastFmTrack.match * 10; // Scale match (0-1) to boost (0-10)
+                            const currentBoost = lastFmBoosts.get(librarySong.subsonic.id) || 0;
+                            lastFmBoosts.set(librarySong.subsonic.id, Math.max(currentBoost, boostAmount));
+                            break;
+                        }
+                    }
+                }
+            } catch (error) {
+                logger.debug(`Error fetching Last.fm similar tracks for ${seedSong.artist} - ${seedSong.title}: ${error}`);
+            }
+        }
+    }
+
+    // Apply Last.fm boosts to scored songs
+    const boostedScoredSongs = scoredSongs.map(item => ({
+        song: item.song,
+        score: item.score + (lastFmBoosts.get(item.song.id) || 0),
+    }));
+
     const relatedButNotSeedSongs: { song: SongID3, score: number }[] = [];
     if (itemType === 'album') {
         const albumEntry = await database.get(['albums', seedItemId]);
@@ -137,7 +174,7 @@ async function handlegetSimilarSongs(c: Context) {
         }
     }
 
-    const combinedScoredSongs = [...relatedButNotSeedSongs, ...scoredSongs.filter(item => item.score > 0)];
+    const combinedScoredSongs = [...relatedButNotSeedSongs, ...boostedScoredSongs.filter(item => item.score > 0)];
 
     // Apply diversity-aware selection instead of simple sorting
     const diverseSelection = selectDiverseSongs(combinedScoredSongs, count * 2); // Get more candidates
