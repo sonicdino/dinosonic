@@ -176,28 +176,25 @@ async function handlegetSimilarSongs(c: Context) {
 
     const combinedScoredSongs = [...relatedButNotSeedSongs, ...boostedScoredSongs.filter(item => item.score > 0)];
 
-    // Apply diversity-aware selection instead of simple sorting
-    const diverseSelection = selectDiverseSongs(combinedScoredSongs, count * 2); // Get more candidates
-    const finalSelection = diverseSelection.slice(0, count);
-    const shuffledResult = shuffleArray(finalSelection);
+    // Apply diversity-aware selection that maintains score order
+    const diverseSelection = selectDiverseSongsRanked(combinedScoredSongs, count);
 
     return createResponse(c, {
         [/(getSimilarSongs2|getSimilarSongs2\.view)$/.test(c.req.path) ? 'similarSongs2' : 'similarSongs']: {
-            song: shuffledResult,
+            song: diverseSelection,
         },
     }, 'ok');
 }
 
 /**
- * Selects songs with enforced diversity constraints
- * Limits how many songs per artist/album can appear in the final list
- * Demoing this approach to improve variety in similar songs. Testing this in PROD Environment. Might go back to simpler method later if not good.
+ * Selects songs with enforced diversity constraints while maintaining score-based ranking
+ * This ensures high-scoring songs appear first, but prevents clustering of same artist/album
  */
-function selectDiverseSongs(
+function selectDiverseSongsRanked(
     scoredSongs: { song: SongID3, score: number }[],
     targetCount: number
 ): SongID3[] {
-    // Sort by score first
+    // Sort by score first (highest to lowest)
     const sorted = [...scoredSongs].sort((a, b) => b.score - a.score);
 
     const selected: SongID3[] = [];
@@ -263,6 +260,7 @@ function selectDiverseSongs(
         }
     }
 
+    // Return in the order selected (which maintains score-based ranking with diversity)
     return selected;
 }
 
@@ -276,12 +274,12 @@ async function enrichSongWithUserData(song: SongID3, userId: string): Promise<So
     };
 }
 
-function shuffleArray<T>(array: T[]): T[] {
-    return array
-        .map((item) => ({ item, rand: Math.random() }))
-        .sort((a, b) => a.rand - b.rand)
-        .map(({ item }) => item);
-}
+// function shuffleArray<T>(array: T[]): T[] {
+//     return array
+//         .map((item) => ({ item, rand: Math.random() }))
+//         .sort((a, b) => a.rand - b.rand)
+//         .map(({ item }) => item);
+// }
 
 function calculateSimilarity(
     baseSong: SongID3,
