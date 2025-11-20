@@ -280,10 +280,10 @@ async function cleanupDatabase() {
 }
 
 async function scanDirectory(dir: string) {
-    for await (const _entry of walk(dir, { exts: ['.flac', '.mp3', '.wav', '.ogg', '.m4a'] })) {
+    for await (const _entry of walk(dir, { exts: ['.flac', '.mp3', '.wav', '.ogg', '.m4a', '.opus'] })) {
         scanStatus.totalFiles++;
     }
-    const processExts = ['.flac', '.mp3', '.wav', '.ogg', '.m4a'];
+    const processExts = ['.flac', '.mp3', '.wav', '.ogg', '.m4a', '.opus'];
     for await (const entry of walk(dir, { match: [new RegExp(`\\.(${processExts.map((ext) => ext.substring(1)).join('|')})$`, 'i')] })) {
         if (entry.isFile) {
             const filePath = entry.path;
@@ -900,6 +900,7 @@ async function extractMetadata(filePath: string, trackId: string): Promise<Song 
             'wav': 'audio/wav',
             'ogg': 'audio/ogg',
             'm4a': 'audio/mp4',
+            'opus': 'audio/opus'
         };
         const lyricsArray: StructuredLyrics[] = [];
         if (metadata.common.lyrics?.length) {
