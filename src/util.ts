@@ -9,7 +9,7 @@ import { existsSync } from 'node:fs';
 
 const SERVER_NAME = 'Dinosonic';
 const API_VERSION = '1.16.1';
-export const SERVER_VERSION = '0.5.3';
+export const SERVER_VERSION = '0.5.4';
 
 export let database: Deno.Kv;
 export let config: Config;

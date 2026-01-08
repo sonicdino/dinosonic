@@ -230,9 +230,41 @@ app.use(
 
 app.use('*', async (c: Context, next: Next) => {
     const start = Date.now();
+    let bodyLog = '';
+
+    if (c.req.method.toUpperCase() === 'POST') {
+        try {
+            // Clone the underlying Request so we can read the body for logging
+            const reqClone = (c.req as any).raw?.clone ? (c.req as any).raw.clone() : undefined;
+            if (reqClone) {
+                const contentType = reqClone.headers.get('content-type') || '';
+                const text = await reqClone.text();
+                if (contentType.includes('application/json')) {
+                    try {
+                        bodyLog = JSON.stringify(JSON.parse(text));
+                    } catch {
+                        bodyLog = text;
+                    }
+                } else if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('text/')) {
+                    bodyLog = text;
+                } else if (text.length > 0) {
+                    bodyLog = '(binary or unsupported content-type)';
+                }
+            }
+        } catch (err) {
+            bodyLog = `(error reading body: ${err})`;
+        }
+    }
+
     await next();
     const duration = Date.now() - start;
-    logger.debug(`[${c.req.method} (${c.res.status})] ${c.req.url} - ${duration}ms`);
+    const status = c.res.status ?? 200;
+
+    if (bodyLog) {
+        logger.debug(`[${c.req.method} (${status})] ${c.req.url}?${bodyLog} - ${duration}ms`);
+    } else {
+        logger.debug(`[${c.req.method} (${status})] ${c.req.url} - ${duration}ms`);
+    }
 });
 
 app.use('/api/*', authMiddleware);
@@ -470,7 +502,15 @@ if (config.ui_folder) {
         app.get('/', (c: Context) => c.text('Dinosonic Subsonic Server is running!'));
     }
 } else {
-    app.get('/', (c: Context) => c.text('Dinosonic Subsonic Server is running!'));
+    app.get('/', async (c: Context) => {
+        try {
+            const content = await Deno.readTextFile(new URL('./client/index.html', import.meta.url));
+            return c.html(content);
+        } catch (error) {
+            logger.error('Error loading index page:', error);
+            return c.text('Dinosonic Subsonic Server is running!', 200);
+        }
+    });
 }
 
 const port = config.port ?? 4100;

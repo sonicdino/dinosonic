@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dinosonic - Subsonic Server</title>
+    <script src="/public/tailwindcss.min.js"></script>
+    <style>
+        @font-face {
+            font-family: 'Dinofiles';
+            src: url('/public/Dinofiles-font.ttf') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        @font-face {
+            font-family: 'VT323';
+            src: url('/public/VT323-Regular.ttf') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        body {
+            font-family: 'VT323', monospace;
+            background-color: #000;
+            color: #fff;
+        }
+
+        .brand-title {
+            font-family: 'Dinofiles', monospace;
+            letter-spacing: 2px;
+        }
+
+        .footer {
+            color: #999;
+            border-top: 1px solid #999;
+        }
+
+        .social-link {
+            color: #999;
+            transition: all 0.2s ease;
+        }
+
+        .social-link:hover {
+            text-decoration: underline;
+        }
+
+        .hover-effect:hover {
+            transform: translateY(-2px);
+            filter: brightness(120%);
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+        }
+    </style>
+
+    <script>
+        async function fetchVersion() {
+            try {
+                const response = await fetch('/api/version');
+                const data = await response.json();
+                document.getElementById('version').innerText = `Version ${data.version}`;
+            } catch (error) {
+                console.error('Error fetching version:', error);
+            }
+        }
+        window.onload = fetchVersion;
+    </script>
+</head>
+
+<body class="bg-black min-h-screen flex flex-col">
+    <!-- Header -->
+    <div class="w-full py-6 px-4 mb-8">
+        <div class="max-w-4xl mx-auto flex items-center justify-between">
+            <div>
+                <h1 class="brand-title text-5xl mb-1">DINOSONIC</h1>
+                <p class="text-blue-300">
+                    A fast, lightweight music streaming server built with Deno, inspired by Subsonic.
+                </p>
+            </div>
+            <div class="text-right">
+                <div class="text-xs text-blue-400 mb-1">STATUS</div>
+                <div id="server-status" class="text-green-400">RUNNING</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Content -->
+    <div class="flex-grow flex items-center justify-center px-8">
+        <div class="w-full max-w-md border border-white p-6 text-center">
+            <h1 class="text-4xl mb-6">Welcome</h1>
+            <p class="text-blue-300 mb-8">
+                The music server is ready to serve.
+            </p>
+            <div class="space-y-3">
+                <a href="/admin" class="block w-full bg-green-700 p-2 uppercase hover-effect text-center">
+                    Admin Panel
+                </a>
+                <a href="https://opensubsonic.netlify.app/docs/endpoints"
+                    class="block w-full border border-white p-2 uppercase hover-effect text-center">
+                    API
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer w-full py-4 px-8 mt-12">
+        <div class="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-center">
+            <div class="mb-4 md:mb-0">
+                <span>&copy; 2025 Dinosonic | <span id="version">Version 0.0.0</span></span>
+            </div>
+            <div class="flex space-x-6">
+                <a href="https://github.com/sonicdino/dinosonic" class="social-link" target="_blank">GitHub</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>
