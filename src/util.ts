@@ -9,7 +9,7 @@ import { existsSync } from 'node:fs';
 
 const SERVER_NAME = 'Dinosonic';
 const API_VERSION = '1.16.1';
-export const SERVER_VERSION = '0.5.4';
+export const SERVER_VERSION = '0.6.5';
 
 export let database: Deno.Kv;
 export let config: Config;
@@ -178,10 +178,17 @@ export async function getFields(c: Context, fieldName: string): Promise<string[]
     if (c.req.method === 'GET') {
         return c.req.queries(fieldName);
     } else if (c.req.method === 'POST') {
+        const contentType = c.req.header('content-type') || '';
+
+        if (contentType.includes('application/x-www-form-urlencoded')) {
+            const formData = await c.req.formData();
+            const values = formData.getAll(fieldName).map((v) => String(v));
+            return values.length > 0 ? values : undefined;
+        }
+
         const body = await c.req.parseBody();
         const values: string[] = [];
 
-        // Handle array syntax like 'fieldName[0]', 'fieldName[1]'
         Object.keys(body).forEach((key) => {
             const match = key.match(new RegExp(`^${fieldName}\\[(\\d+)\\]$`));
             if (match) {
@@ -191,7 +198,6 @@ export async function getFields(c: Context, fieldName: string): Promise<string[]
 
         if (values.length > 0) return values;
 
-        // Handle repeated field names or a single field
         const value = body[fieldName];
         return Array.isArray(value) ? value : value !== undefined ? [value as string] : undefined;
     }
@@ -361,6 +367,7 @@ export async function ensureAdminUserExistsHybrid() {
                 id: adminId,
                 username: adminUsername,
                 password: await encryptForTokenAuth(adminPassword),
+                apiKeys: [],
             },
             subsonic: {
                 username: adminUsername,
@@ -516,6 +523,21 @@ export async function getUserByUsername(name: string): Promise<User | undefined>
 }
 
 /**
+ * Finds a user in the database by their API key.
+ * @param apiKey The API key to search for.
+ * @returns A promise that resolves to the User object or undefined if not found.
+ */
+export async function getUserByApiKey(apiKey: string): Promise<User | undefined> {
+    for await (const entry of database.list({ prefix: ['users'] })) {
+        const parsedEntry = UserSchema.safeParse(entry.value as User | null);
+        if (parsedEntry.success) {
+            const user = parsedEntry.data;
+            if (user.backend.apiKeys?.some((k) => k.key === apiKey)) return user;
+        }
+    }
+}
+
+/**
  * Creates a standardized OpenSubsonic response in either JSON or XML format.
  * @param c The Hono context object.
  * @param data The main data payload for the response.
@@ -563,10 +585,35 @@ export async function validateAuth(c: Context): Promise<Response | (SubsonicUser
     const password = await getField(c, 'p');
     const token = await getField(c, 't');
     const salt = await getField(c, 's');
+    const apiKey = await getField(c, 'apiKey');
     const client = await getField(c, 'c');
 
-    if (!username) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'u'" });
     if (!client) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'c'" });
+
+    // Check for conflicting authentication mechanisms
+    const authMethodsProvided = [
+        username ? 1 : 0,
+        apiKey ? 1 : 0,
+    ].reduce((a, b) => a + b, 0);
+
+    if (authMethodsProvided > 1) return createResponse(c, {}, 'failed', { code: 43, message: ERROR_MESSAGES[43] });
+    // API Key authentication
+    if (apiKey) {
+        const user = await getUserByApiKey(apiKey);
+        if (!user) return createResponse(c, {}, 'failed', { code: 44, message: ERROR_MESSAGES[44] });
+
+        // Update last used timestamp
+        const keyIndex = user.backend.apiKeys?.findIndex((k) => k.key === apiKey);
+        if (keyIndex !== undefined && keyIndex >= 0 && user.backend.apiKeys) {
+            user.backend.apiKeys[keyIndex].lastUsed = new Date();
+            await database.set(['users', user.backend.id], user);
+        }
+
+        return { ...user.subsonic, id: user.backend.id };
+    }
+
+    // Username/password based authentication
+    if (!username) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'u'" });
 
     const user = await getUserByUsername(username);
     if (!user) return createResponse(c, {}, 'failed', { code: 40, message: ERROR_MESSAGES[40] });

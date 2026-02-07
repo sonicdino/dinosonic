@@ -12,6 +12,10 @@ async function handlegetRandomSongs(c: Context) {
     const fromYear = parseInt(await getField(c, 'fromYear') || '0');
     const toYear = parseInt(await getField(c, 'toYear') || '0');
     const genre = await getField(c, 'genre');
+    const musicFolderId = parseInt(await getField(c, 'musicFolderId') || '1');
+
+    // Currently only one virtual music folder (id: 1) is supported
+    if (musicFolderId !== 1) return createResponse(c, { randomSongs: [] }, 'ok');
 
     const user = await getUserByUsername(isValidated.username);
     if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });

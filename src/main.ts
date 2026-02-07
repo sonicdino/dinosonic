@@ -26,9 +26,8 @@ import * as path from '@std/path';
 import { authMiddleware } from './client/middleware.ts';
 import { ensureDir } from '@std/fs';
 
-// Simple in-memory cache for share pages
 const sharePageCache = new Map<string, { html: string; timestamp: number }>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache TTL
+const CACHE_TTL = 5 * 60 * 1000;
 let configFile = Deno.env.get('DINO_CONFIG_FILE');
 let config = null;
 
@@ -72,7 +71,6 @@ if (configFile) {
     const configText = await Deno.readTextFile(configFile);
     configParse = ConfigSchema.safeParse(parse(configText));
 } else {
-    // Cache environment variables to reduce redundant lookups
     const envVars = {
         port: Deno.env.get('DINO_PORT'),
         log_level: Deno.env.get('DINO_LOG_LEVEL'),
@@ -88,6 +86,7 @@ if (configFile) {
         lastfm_scrobbling: Deno.env.get('DINO_LASTFM_SCROBBLING'),
         lastfm_apikey: Deno.env.get('DINO_LASTFM_APIKEY'),
         lastfm_apisecret: Deno.env.get('DINO_LASTFM_APISECRET'),
+        musicbrainz_enabled: Deno.env.get('DINO_MUSICBRAINZ_ENABLED'),
         spotify_enabled: Deno.env.get('DINO_SPOTIFY_ENABLED'),
         spotify_client_id: Deno.env.get('DINO_SPOTIFY_CLIENT_ID'),
         spotify_client_secret: Deno.env.get('DINO_SPOTIFY_CLIENT_SECRET'),
@@ -128,10 +127,16 @@ if (configFile) {
         };
     }
 
+    if (envVars.musicbrainz_enabled !== undefined) {
+        conf.musicbrainz = {
+            enabled: envVars.musicbrainz_enabled === 'true',
+        };
+    }
+
     if (envVars.listenbrainz_scrobbling) {
         conf.listenbrainz = {
-            enable_scrobbling: envVars.listenbrainz_scrobbling === 'true'
-        }
+            enable_scrobbling: envVars.listenbrainz_scrobbling === 'true',
+        };
     }
 
     if (envVars.transcoding_enabled) {
@@ -155,7 +160,7 @@ if (!config.data_folder.length) throw new Error('Data folder path is empty! chan
 if (!config.default_admin_password.length) throw new Error('Default admin password is empty! are you asking to get hacked?');
 
 await setupLogger(config.log_level);
-await ensureDir(config.data_folder)
+await ensureDir(config.data_folder);
 
 registerTempDirCleanup();
 const database = await Deno.openKv(path.join(config.data_folder as string, 'dinosonic.db'));
@@ -168,7 +173,6 @@ async function cleanupNowPlaying() {
     for await (const entry of allNowPlaying) {
         const item = entry.value as nowPlaying;
 
-        // If missing required fields, delete immediately
         if (!item || !item.minutesAgo || !item.track.duration) {
             await database.delete(entry.key);
             logger.warn(`Removed invalid nowPlaying entry for ${entry.key}`);
@@ -177,7 +181,6 @@ async function cleanupNowPlaying() {
 
         const minutesAgo = Math.floor((now - item.minutesAgo.getTime()) / (1000 * 60));
 
-        // Remove if it's been 10 minutes or longer than the song duration
         if (minutesAgo > Math.ceil(item.track.duration / 60)) {
             await database.delete(entry.key);
             logger.debug(`Removed stale nowPlaying entry for ${item.username}`);
@@ -185,11 +188,9 @@ async function cleanupNowPlaying() {
     }
 }
 
-// Run cleanup every minute
 setInterval(cleanupNowPlaying, 60 * 1000);
 cleanupNowPlaying();
 
-// Cleanup share page cache periodically
 function cleanupShareCache() {
     const now = Date.now();
     for (const [key, value] of sharePageCache.entries()) {
@@ -199,7 +200,6 @@ function cleanupShareCache() {
     }
 }
 
-// Run share cache cleanup every 5 minutes
 setInterval(cleanupShareCache, 5 * 60 * 1000);
 
 await ensureAdminUserExistsHybrid();
@@ -209,7 +209,6 @@ if (config.scan_on_start) {
     scanMediaDirectories(config.music_folders);
 }
 
-// Parse the scan interval once and reuse it
 const scanIntervalMs = parseTimeToMs(config.scan_interval);
 setInterval(() => {
     logger.info('Starting media scan..');
@@ -234,7 +233,7 @@ app.use('*', async (c: Context, next: Next) => {
 
     if (c.req.method.toUpperCase() === 'POST') {
         try {
-            // Clone the underlying Request so we can read the body for logging
+            // deno-lint-ignore no-explicit-any
             const reqClone = (c.req as any).raw?.clone ? (c.req as any).raw.clone() : undefined;
             if (reqClone) {
                 const contentType = reqClone.headers.get('content-type') || '';
@@ -323,28 +322,23 @@ app.get('/share/:shareId', async (c: Context) => {
 
         if (share.expires && new Date(share.expires) < new Date()) {
             logger.info(`Share ID ${shareId} has expired. Deleting.`);
-            await database.delete(['shares', shareId]); // Optionally delete expired shares
-            return c.text('Share has expired.', 410); // 410 Gone
+            await database.delete(['shares', shareId]);
+            return c.text('Share has expired.', 410);
         }
 
-        // Increment view count and update last viewed (can be done here or in /api/public-share-details)
-        // Doing it here means even direct page loads (by crawlers) are counted.
         share.viewCount = (share.viewCount || 0) + 1;
         share.lastViewed = new Date();
-        await database.set(['shares', shareId], share); // Save updated share
+        await database.set(['shares', shareId], share);
 
-        // Fetch item details based on share.itemType
-        let item: Song | Album | Playlist | CoverArt | null = null; // Use specific types
+        let item: Song | Album | Playlist | CoverArt | null = null;
         let ownerUsername = 'Unknown User';
 
-        // Get owner information
         const ownerEntry = await database.get(['users', share.userId]);
         if (ownerEntry.value) {
             const owner = UserSchema.parse(ownerEntry.value);
             ownerUsername = owner.subsonic.username;
         }
 
-        // Fetch item details based on share.itemType with optimized queries
         switch (share.itemType) {
             case 'song': {
                 const songEntry = await database.get(['tracks', share.itemId]);
@@ -390,7 +384,9 @@ app.get('/share/:shareId', async (c: Context) => {
             item = item as Album;
             metaTitle = `${item.subsonic.name || 'Album'} by ${item.subsonic.artist || 'Unknown Artist'}`;
             metaDescription = share.description ||
-                `Check out the album "${item.subsonic.name}" by ${item.subsonic.artist || 'Unknown Artist'} on Dinosonic. Shared by ${ownerUsername}.`;
+                `Check out the album "${item.subsonic.name}" by ${
+                    item.subsonic.artist || 'Unknown Artist'
+                } on Dinosonic. Shared by ${ownerUsername}.`;
             if (item.subsonic.coverArt) metaImageUrl = `${baseUrl}/api/public-cover/${item.subsonic.coverArt}?size=600`;
             metaOgType = 'music.album';
         } else if (share.itemType === 'playlist' && item && 'name' in item) { // Playlist type check
@@ -416,13 +412,13 @@ app.get('/share/:shareId', async (c: Context) => {
 
         // Construct meta tags string
         let metaTagsHtml = `
-        <meta property="og:title" content="${metaTitle.replace(/"/g, '\"')}">
-        <meta property="og:description" content="${metaDescription.replace(/"/g, '\"')}">
+        <meta property="og:title" content="${metaTitle.replace(/"/g, '"')}">
+        <meta property="og:description" content="${metaDescription.replace(/"/g, '"')}">
         <meta property="og:url" content="${baseUrl}/share/${shareId}">
         <meta property="og:site_name" content="Dinosonic">
         <meta property="og:type" content="${metaOgType}">
-        <meta name="twitter:title" content="${metaTitle.replace(/"/g, '\"')}">
-        <meta name="twitter:description" content="${metaDescription.replace(/"/g, '\"')}">
+        <meta name="twitter:title" content="${metaTitle.replace(/"/g, '"')}">
+        <meta name="twitter:description" content="${metaDescription.replace(/"/g, '"')}">
     `;
         if (metaImageUrl) {
             metaTagsHtml += `
@@ -438,8 +434,8 @@ app.get('/share/:shareId', async (c: Context) => {
         // Add music specific tags if applicable (simplified for brevity here, can be expanded)
         if (metaOgType === 'music.song' && item && 'subsonic' in item) {
             item = item as Song;
-            if (item.subsonic.artist) metaTagsHtml += `<meta property="music:musician" content="${item.subsonic.artist.replace(/"/g, '\"')}">`;
-            if (item.subsonic.album) metaTagsHtml += `<meta property="music:album" content="${item.subsonic.album.replace(/"/g, '\"')}">`;
+            if (item.subsonic.artist) metaTagsHtml += `<meta property="music:musician" content="${item.subsonic.artist.replace(/"/g, '"')}">`;
+            if (item.subsonic.album) metaTagsHtml += `<meta property="music:album" content="${item.subsonic.album.replace(/"/g, '"')}">`;
         } // etc. for album, playlist
 
         let htmlContent = await Deno.readTextFile(new URL('./client/share/share.html', import.meta.url));

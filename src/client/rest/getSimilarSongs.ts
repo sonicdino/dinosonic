@@ -1,7 +1,7 @@
 import { Context, Hono } from '@hono/hono';
-import { createResponse, database, getField, getUserByUsername, validateAuth, logger } from '../../util.ts';
+import { createResponse, database, getField, getUserByUsername, logger, validateAuth } from '../../util.ts';
 import { getSimilarTracks } from '../../LastFM.ts';
-import { AlbumSchema, ArtistSchema, Song, SongID3, SongSchema, userData } from '../../zod.ts';
+import { AlbumSchema, ArtistSchema, SongID3, SongSchema, userData } from '../../zod.ts';
 
 const getSimilarSongs = new Hono();
 
@@ -17,340 +17,336 @@ async function handlegetSimilarSongs(c: Context) {
     const user = await getUserByUsername(isValidated.username);
     if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
 
-    const seedSongs: SongID3[] = [];
-    let itemType: 'song' | 'album' | 'artist' | null = null;
-    let seedItemId: string = inputId;
-
-    const songEntry = await database.get(['tracks', inputId]);
-    if (songEntry.value) {
-        const parsedSong = SongSchema.safeParse(songEntry.value);
-        if (parsedSong.success) {
-            seedSongs.push(await enrichSongWithUserData(parsedSong.data.subsonic, user.backend.id));
-            itemType = 'song';
-        }
-    } else {
-        const albumEntry = await database.get(['albums', inputId]);
-        if (albumEntry.value) {
-            const parsedAlbum = AlbumSchema.safeParse(albumEntry.value);
-            if (parsedAlbum.success) {
-                itemType = 'album';
-                seedItemId = parsedAlbum.data.subsonic.id;
-                const album = parsedAlbum.data;
-                logger.debug(`Finding similar songs for album: ${album.subsonic.name} (ID: ${seedItemId})`);
-                for (const songIdOrObj of album.subsonic.song) {
-                    const songId = typeof songIdOrObj === 'string' ? songIdOrObj : (songIdOrObj as SongID3).id;
-                    const trackEntry = await database.get(['tracks', songId]);
-                    if (trackEntry.value) {
-                        const songData = SongSchema.safeParse(trackEntry.value);
-                        if (songData.success) seedSongs.push(await enrichSongWithUserData(songData.data.subsonic, user.backend.id));
-                    }
-                    if (seedSongs.length >= 5) break;
-                }
-                if (seedSongs.length === 0) {
-                    logger.warn(`Album ${album.subsonic.name} has no valid/parsable songs to use as seed.`);
-                }
-            }
-        } else {
-            const artistEntry = await database.get(['artists', inputId]);
-            if (artistEntry.value) {
-                const parsedArtist = ArtistSchema.safeParse(artistEntry.value);
-                if (parsedArtist.success) {
-                    itemType = 'artist';
-                    seedItemId = parsedArtist.data.artist.id;
-                    const artist = parsedArtist.data;
-                    logger.debug(`Finding similar songs for artist: ${artist.artist.name} (ID: ${seedItemId})`);
-                    let artistSongCount = 0;
-                    for await (const trackEntryIterator of database.list({ prefix: ['tracks'] })) {
-                        const songData = SongSchema.safeParse(trackEntryIterator.value);
-                        if (songData.success && songData.data.subsonic.artists.some(a => a.id === artist.artist.id)) {
-                            seedSongs.push(await enrichSongWithUserData(songData.data.subsonic, user.backend.id));
-                            artistSongCount++;
-                            if (artistSongCount >= 5) break;
-                        }
-                    }
-                    if (seedSongs.length === 0) {
-                        logger.warn(`Artist ${artist.artist.name} has no songs in the library to use as seed.`);
-                    }
-                }
-            }
-        }
+    const seedResult = await gatherSeedSongs(inputId, user.backend.id);
+    if (!seedResult.seeds.length) {
+        return createResponse(c, {}, 'failed', { code: 70, message: 'Invalid ID or no songs found for similarity matching' });
     }
 
-    if (seedSongs.length === 0) {
-        return createResponse(c, {}, 'failed', { code: 70, message: 'Could not find a valid song, album, or artist for the given ID to seed similar songs.' });
-    }
+    logger.debug(`Similarity search: ${seedResult.seeds.length} seeds, type=${seedResult.type}, id=${seedResult.itemId}`);
 
-    logger.debug(`Using ${seedSongs.length} seed song(s). First seed: ${seedSongs[0].title}, Type: ${itemType}, ID: ${seedItemId}`);
+    const candidates = await gatherCandidateSongs(seedResult.itemId, seedResult.type, user.backend.id);
+    const lastFmBoosts = await fetchLastFmBoosts(seedResult.seeds, candidates);
 
-    const allLibrarySongs: Song[] = [];
-    for await (const entry of database.list({ prefix: ['tracks'] })) {
-        const parsed = SongSchema.safeParse(entry.value);
-        if (parsed.success) allLibrarySongs.push(parsed.data);
-    }
+    const scoredSongs = candidates
+        .filter((song) => !seedResult.seeds.some((s) => s.id === song.id))
+        .map((song) => {
+            const maxScore = Math.max(...seedResult.seeds.map((seed) => calculateSimilarity(seed, song, seedResult.type, seedResult.itemId)));
+            const lastFmBoost = lastFmBoosts.get(song.id) || 0;
+            return { song, score: maxScore + lastFmBoost };
+        })
+        .filter((item) => item.score > 0)
+        .sort((a, b) => b.score - a.score);
 
-    const scoredSongs = await Promise.all(
-        allLibrarySongs
-            .filter(candidateSongFull =>
-                !seedSongs.some(seed => seed.id === candidateSongFull.subsonic.id) &&
-                (itemType !== 'album' || candidateSongFull.subsonic.albumId !== seedItemId) &&
-                (itemType !== 'artist' || !candidateSongFull.subsonic.artists.some(a => a.id === seedItemId))
-            )
-            .map(async (candidateSongFull) => {
-                const candidateSong = await enrichSongWithUserData(candidateSongFull.subsonic, user.backend.id);
-                let maxScore = 0;
-                for (const seed of seedSongs) {
-                    const currentScore = calculateSimilarity(seed, candidateSong, itemType, seedItemId);
-                    if (currentScore > maxScore) {
-                        maxScore = currentScore;
-                    }
-                }
-                return { song: candidateSong, score: maxScore };
-            })
-    );
-
-    // Fetch Last.fm similar tracks for the seed songs to boost relevant tracks
-    const lastFmBoosts: Map<string, number> = new Map();
-    if (seedSongs.length > 0) {
-        logger.debug('Fetching Last.fm similar tracks for seed songs...');
-        for (const seedSong of seedSongs) {
-            try {
-                const lastFmSimilar = await getSimilarTracks(seedSong.artist, seedSong.title, 50);
-                for (const lastFmTrack of lastFmSimilar) {
-                    // Try to find matching songs in library
-                    for (const librarySong of allLibrarySongs) {
-                        const libArtist = librarySong.subsonic.artist.toLowerCase();
-                        const libTitle = librarySong.subsonic.title.toLowerCase();
-                        const lfmArtist = lastFmTrack.artist.toLowerCase();
-                        const lfmName = lastFmTrack.name.toLowerCase();
-
-                        if (libArtist === lfmArtist && libTitle === lfmName) {
-                            // Boost score based on Last.fm match percentage
-                            const boostAmount = lastFmTrack.match * 10; // Scale match (0-1) to boost (0-10)
-                            const currentBoost = lastFmBoosts.get(librarySong.subsonic.id) || 0;
-                            lastFmBoosts.set(librarySong.subsonic.id, Math.max(currentBoost, boostAmount));
-                            break;
-                        }
-                    }
-                }
-            } catch (error) {
-                logger.debug(`Error fetching Last.fm similar tracks for ${seedSong.artist} - ${seedSong.title}: ${error}`);
-            }
-        }
-    }
-
-    // Apply Last.fm boosts to scored songs
-    const boostedScoredSongs = scoredSongs.map(item => ({
-        song: item.song,
-        score: item.score + (lastFmBoosts.get(item.song.id) || 0),
-    }));
-
-    const relatedButNotSeedSongs: { song: SongID3, score: number }[] = [];
-    if (itemType === 'album') {
-        const albumEntry = await database.get(['albums', seedItemId]);
-        if (albumEntry.value) {
-            const album = AlbumSchema.parse(albumEntry.value).subsonic;
-            for (const songIdOrObj of album.song) {
-                const songId = typeof songIdOrObj === 'string' ? songIdOrObj : (songIdOrObj as SongID3).id;
-                if (!seedSongs.some(s => s.id === songId)) {
-                    const trackEntry = await database.get(['tracks', songId]);
-                    if (trackEntry.value) {
-                        const songData = SongSchema.parse(trackEntry.value);
-                        relatedButNotSeedSongs.push({ song: await enrichSongWithUserData(songData.subsonic, user.backend.id), score: 60 });
-                        break;
-                    }
-                }
-            }
-        }
-    } else if (itemType === 'artist') {
-        for await (const trackEntryIterator of database.list({ prefix: ['tracks'] })) {
-            const songParseResult = SongSchema.safeParse(trackEntryIterator.value);
-            if (songParseResult.success) {
-                const songData = songParseResult.data;
-                if (songData.subsonic.artists.some(a => a.id === seedItemId) && !seedSongs.some(s => s.id === songData.subsonic.id)) {
-                    relatedButNotSeedSongs.push({ song: await enrichSongWithUserData(songData.subsonic, user.backend.id), score: 50 });
-                    break;
-                }
-            }
-        }
-    }
-
-    const combinedScoredSongs = [...relatedButNotSeedSongs, ...boostedScoredSongs.filter(item => item.score > 0)];
-
-    // Apply diversity-aware selection that maintains score order
-    const diverseSelection = selectDiverseSongsRanked(combinedScoredSongs, count);
+    const relatedSongs = await getRelatedButNotSeedSongs(seedResult.itemId, seedResult.type, seedResult.seeds, user.backend.id);
+    const combined = [...relatedSongs, ...scoredSongs];
+    const diverse = selectDiverseSongs(combined, count);
 
     return createResponse(c, {
         [/(getSimilarSongs2|getSimilarSongs2\.view)$/.test(c.req.path) ? 'similarSongs2' : 'similarSongs']: {
-            song: diverseSelection,
+            song: diverse,
         },
     }, 'ok');
 }
 
-/**
- * Selects songs with enforced diversity constraints while maintaining score-based ranking
- * This ensures high-scoring songs appear first, but prevents clustering of same artist/album
- */
-function selectDiverseSongsRanked(
-    scoredSongs: { song: SongID3, score: number }[],
-    targetCount: number
-): SongID3[] {
-    // Sort by score first (highest to lowest)
-    const sorted = [...scoredSongs].sort((a, b) => b.score - a.score);
+async function gatherSeedSongs(inputId: string, userId: string) {
+    const seeds: SongID3[] = [];
+    let type: 'song' | 'album' | 'artist' | null = null;
+    let itemId = inputId;
 
-    const selected: SongID3[] = [];
-    const artistCount = new Map<string, number>();
-    const albumCount = new Map<string, number>();
-
-    // Configurable diversity limits
-    const MAX_SONGS_PER_ARTIST = 3; // Max songs from same artist
-    const MAX_SONGS_PER_ALBUM = 2;  // Max songs from same album
-
-    // First pass: select high-scoring songs with diversity constraints
-    for (const item of sorted) {
-        if (selected.length >= targetCount) break;
-
-        const song = item.song;
-        const artistIds = song.artists.map(a => a.id);
-        const albumId = song.albumId || 'unknown';
-
-        // Check if adding this song would violate diversity constraints
-        const wouldExceedArtistLimit = artistIds.some(artistId =>
-            (artistCount.get(artistId) || 0) >= MAX_SONGS_PER_ARTIST
-        );
-        const wouldExceedAlbumLimit = (albumCount.get(albumId) || 0) >= MAX_SONGS_PER_ALBUM;
-
-        if (!wouldExceedArtistLimit && !wouldExceedAlbumLimit) {
-            selected.push(song);
-
-            // Update counts
-            for (const artistId of artistIds) {
-                artistCount.set(artistId, (artistCount.get(artistId) || 0) + 1);
-            }
-            albumCount.set(albumId, (albumCount.get(albumId) || 0) + 1);
+    const songEntry = await database.get(['tracks', inputId]);
+    if (songEntry.value) {
+        const parsed = SongSchema.safeParse(songEntry.value);
+        if (parsed.success) {
+            seeds.push(await enrichSong(parsed.data.subsonic, userId));
+            type = 'song';
+            return { seeds, type, itemId };
         }
     }
 
-    // Second pass: if we haven't hit target, relax constraints slightly
-    if (selected.length < targetCount) {
-        const RELAXED_MAX_ARTIST = 4;
-        const RELAXED_MAX_ALBUM = 3;
+    const albumEntry = await database.get(['albums', inputId]);
+    if (albumEntry.value) {
+        const parsed = AlbumSchema.safeParse(albumEntry.value);
+        if (parsed.success) {
+            type = 'album';
+            itemId = parsed.data.subsonic.id;
+            const songIds = parsed.data.subsonic.song
+                .slice(0, 5)
+                .map((s) => typeof s === 'string' ? s : (s as SongID3).id);
 
-        for (const item of sorted) {
+            for (const id of songIds) {
+                const track = await database.get(['tracks', id]);
+                if (track.value) {
+                    const songData = SongSchema.safeParse(track.value);
+                    if (songData.success) seeds.push(await enrichSong(songData.data.subsonic, userId));
+                }
+            }
+            return { seeds, type, itemId };
+        }
+    }
+
+    const artistEntry = await database.get(['artists', inputId]);
+    if (artistEntry.value) {
+        const parsed = ArtistSchema.safeParse(artistEntry.value);
+        if (parsed.success) {
+            type = 'artist';
+            itemId = parsed.data.artist.id;
+            const artistId = parsed.data.artist.id;
+
+            for await (const entry of database.list({ prefix: ['tracks'] })) {
+                const songData = SongSchema.safeParse(entry.value);
+                if (songData.success && songData.data.subsonic.artists.some((a) => a.id === artistId)) {
+                    seeds.push(await enrichSong(songData.data.subsonic, userId));
+                    if (seeds.length >= 5) break;
+                }
+            }
+            return { seeds, type, itemId };
+        }
+    }
+
+    return { seeds, type, itemId };
+}
+
+async function gatherCandidateSongs(seedItemId: string, seedType: 'song' | 'album' | 'artist' | null, userId: string): Promise<SongID3[]> {
+    const candidates: SongID3[] = [];
+
+    for await (const entry of database.list({ prefix: ['tracks'] })) {
+        const parsed = SongSchema.safeParse(entry.value);
+        if (!parsed.success) continue;
+
+        const song = parsed.data.subsonic;
+        const isSameAlbum = seedType === 'album' && song.albumId === seedItemId;
+        const isSameArtist = seedType === 'artist' && song.artists.some((a) => a.id === seedItemId);
+
+        if (!isSameAlbum && !isSameArtist) {
+            candidates.push(await enrichSong(song, userId));
+        }
+    }
+
+    return candidates;
+}
+
+async function fetchLastFmBoosts(seeds: SongID3[], candidates: SongID3[]): Promise<Map<string, number>> {
+    const boosts = new Map<string, number>();
+    const candidateMap = new Map(candidates.map((c) => [
+        `${c.artist.toLowerCase()}|${c.title.toLowerCase()}`,
+        c.id,
+    ]));
+
+    for (const seed of seeds) {
+        try {
+            const similar = await getSimilarTracks(seed.artist, seed.title, 50);
+            for (const track of similar) {
+                const key = `${track.artist.toLowerCase()}|${track.name.toLowerCase()}`;
+                const songId = candidateMap.get(key);
+                if (songId) {
+                    const boost = track.match * 10;
+                    boosts.set(songId, Math.max(boosts.get(songId) || 0, boost));
+                }
+            }
+        } catch (error) {
+            logger.debug(`Last.fm error for ${seed.artist} - ${seed.title}: ${error}`);
+        }
+    }
+
+    return boosts;
+}
+
+async function getRelatedButNotSeedSongs(
+    seedItemId: string,
+    seedType: 'song' | 'album' | 'artist' | null,
+    seeds: SongID3[],
+    userId: string,
+): Promise<Array<{ song: SongID3; score: number }>> {
+    const related: Array<{ song: SongID3; score: number }> = [];
+
+    if (seedType === 'album') {
+        const albumEntry = await database.get(['albums', seedItemId]);
+        if (albumEntry.value) {
+            const album = AlbumSchema.parse(albumEntry.value).subsonic;
+            const unseeded = album.song
+                .map((s) => typeof s === 'string' ? s : (s as SongID3).id)
+                .filter((id) => !seeds.some((seed) => seed.id === id))
+                .slice(0, 3);
+
+            for (const songId of unseeded) {
+                const track = await database.get(['tracks', songId]);
+                if (track.value) {
+                    const songData = SongSchema.parse(track.value);
+                    related.push({ song: await enrichSong(songData.subsonic, userId), score: 60 });
+                }
+            }
+        }
+    } else if (seedType === 'artist') {
+        let found = 0;
+        for await (const entry of database.list({ prefix: ['tracks'] })) {
+            if (found >= 3) break;
+            const songData = SongSchema.safeParse(entry.value);
+            if (songData.success) {
+                const song = songData.data;
+                if (song.subsonic.artists.some((a) => a.id === seedItemId) && !seeds.some((s) => s.id === song.subsonic.id)) {
+                    related.push({ song: await enrichSong(song.subsonic, userId), score: 50 });
+                    found++;
+                }
+            }
+        }
+    }
+
+    return related;
+}
+
+function selectDiverseSongs(
+    scored: Array<{ song: SongID3; score: number }>,
+    targetCount: number,
+): SongID3[] {
+    if (scored.length === 0) return [];
+    if (scored.length <= targetCount) return scored.map((s) => s.song);
+
+    const selected: Array<{ song: SongID3; score: number; index: number }> = [];
+    const artistLastIndex = new Map<string, number>();
+    const albumLastIndex = new Map<string, number>();
+
+    const MIN_ARTIST_DISTANCE = 3;
+    const MIN_ALBUM_DISTANCE = 5;
+
+    for (let i = 0; i < scored.length && selected.length < targetCount; i++) {
+        const item = scored[i];
+        const song = item.song;
+        const artistIds = song.artists.map((a) => a.id);
+        const albumId = song.albumId || 'unknown';
+
+        let minArtistDistance = Infinity;
+        for (const artistId of artistIds) {
+            const lastIdx = artistLastIndex.get(artistId);
+            if (lastIdx !== undefined) {
+                const distance = selected.length - lastIdx;
+                minArtistDistance = Math.min(minArtistDistance, distance);
+            }
+        }
+
+        const lastAlbumIdx = albumLastIndex.get(albumId);
+        const albumDistance = lastAlbumIdx !== undefined ? selected.length - lastAlbumIdx : Infinity;
+
+        const canAddByDistance = (minArtistDistance >= MIN_ARTIST_DISTANCE || minArtistDistance === Infinity) &&
+            (albumDistance >= MIN_ALBUM_DISTANCE || albumDistance === Infinity);
+
+        if (canAddByDistance || selected.length < 5) {
+            selected.push({ ...item, index: selected.length });
+            artistIds.forEach((id) => artistLastIndex.set(id, selected.length - 1));
+            albumLastIndex.set(albumId, selected.length - 1);
+        }
+    }
+
+    if (selected.length < targetCount) {
+        const remaining = scored.filter((s) => !selected.some((sel) => sel.song.id === s.song.id));
+
+        for (const item of remaining) {
             if (selected.length >= targetCount) break;
 
             const song = item.song;
-            if (selected.some(s => s.id === song.id)) continue; // Already selected
-
-            const artistIds = song.artists.map(a => a.id);
+            const artistIds = song.artists.map((a) => a.id);
             const albumId = song.albumId || 'unknown';
 
-            const wouldExceedRelaxedArtist = artistIds.some(artistId =>
-                (artistCount.get(artistId) || 0) >= RELAXED_MAX_ARTIST
-            );
-            const wouldExceedRelaxedAlbum = (albumCount.get(albumId) || 0) >= RELAXED_MAX_ALBUM;
-
-            if (!wouldExceedRelaxedArtist && !wouldExceedRelaxedAlbum) {
-                selected.push(song);
-
-                for (const artistId of artistIds) {
-                    artistCount.set(artistId, (artistCount.get(artistId) || 0) + 1);
+            let minArtistDistance = Infinity;
+            for (const artistId of artistIds) {
+                const lastIdx = artistLastIndex.get(artistId);
+                if (lastIdx !== undefined) {
+                    const distance = selected.length - lastIdx;
+                    minArtistDistance = Math.min(minArtistDistance, distance);
                 }
-                albumCount.set(albumId, (albumCount.get(albumId) || 0) + 1);
+            }
+
+            const lastAlbumIdx = albumLastIndex.get(albumId);
+            const albumDistance = lastAlbumIdx !== undefined ? selected.length - lastAlbumIdx : Infinity;
+
+            const relaxedDistance = Math.floor(MIN_ARTIST_DISTANCE / 2);
+            const canAddRelaxed = (minArtistDistance >= relaxedDistance || minArtistDistance === Infinity) &&
+                (albumDistance >= relaxedDistance || albumDistance === Infinity);
+
+            if (canAddRelaxed) {
+                selected.push({ ...item, index: selected.length });
+                artistIds.forEach((id) => artistLastIndex.set(id, selected.length - 1));
+                albumLastIndex.set(albumId, selected.length - 1);
             }
         }
     }
 
-    // Return in the order selected (which maintains score-based ranking with diversity)
-    return selected;
+    if (selected.length < targetCount) {
+        const remaining = scored.filter((s) => !selected.some((sel) => sel.song.id === s.song.id));
+        for (const item of remaining) {
+            if (selected.length >= targetCount) break;
+            selected.push({ ...item, index: selected.length });
+        }
+    }
+
+    return selected.map((s) => s.song);
 }
 
-async function enrichSongWithUserData(song: SongID3, userId: string): Promise<SongID3> {
-    const userTrackData = ((await database.get(['userData', userId, 'track', song.id])).value as userData) || {};
+async function enrichSong(song: SongID3, userId: string): Promise<SongID3> {
+    const userData = ((await database.get(['userData', userId, 'track', song.id])).value as userData) || {};
     return {
         ...song,
-        starred: userTrackData.starred ? userTrackData.starred.toISOString() : undefined,
-        playCount: userTrackData.playCount,
-        userRating: userTrackData.userRating,
+        starred: userData.starred ? userData.starred.toISOString() : undefined,
+        playCount: userData.playCount,
+        userRating: userData.userRating,
     };
 }
 
-// function shuffleArray<T>(array: T[]): T[] {
-//     return array
-//         .map((item) => ({ item, rand: Math.random() }))
-//         .sort((a, b) => a.rand - b.rand)
-//         .map(({ item }) => item);
-// }
-
 function calculateSimilarity(
-    baseSong: SongID3,
+    base: SongID3,
     candidate: SongID3,
     seedType: 'song' | 'album' | 'artist' | null,
-    seedItemId: string
+    seedItemId: string,
 ): number {
     let score = 0;
 
-    // Genre matching - most important for musical coherence
-    if (baseSong.genre && candidate.genre && baseSong.genre.toLowerCase() === candidate.genre.toLowerCase()) {
+    if (base.genre && candidate.genre && base.genre.toLowerCase() === candidate.genre.toLowerCase()) {
         score += 20;
-    } else if (baseSong.genres && candidate.genres && baseSong.genres.some(g1 => candidate.genres!.some(g2 => g1.name.toLowerCase() === g2.name.toLowerCase()))) {
-        score += 15;
+    } else if (base.genres && candidate.genres) {
+        const match = base.genres.some((g1) => candidate.genres!.some((g2) => g1.name.toLowerCase() === g2.name.toLowerCase()));
+        if (match) score += 15;
     }
 
-    // Artist matching - significantly reduced to encourage diversity
-    const baseArtistIds = new Set(baseSong.artists.map(a => a.id));
-    const candidateArtistIds = new Set(candidate.artists.map(a => a.id));
-    const commonArtists = [...baseArtistIds].filter(id => candidateArtistIds.has(id));
+    const baseArtists = new Set(base.artists.map((a) => a.id));
+    const candidateArtists = new Set(candidate.artists.map((a) => a.id));
+    const commonArtists = [...baseArtists].filter((id) => candidateArtists.has(id));
 
     if (commonArtists.length > 0) {
-        score += 4; // Reduced from 6
-        if (commonArtists.length === baseArtistIds.size && baseArtistIds.size > 0) {
-            score += 2; // Reduced from 3
-        }
-        // Only boost if seed is specifically an artist
-        if (seedType === 'artist' && candidateArtistIds.has(seedItemId)) {
-            score += 6; // Reduced from 8
-        }
+        score += 4;
+        if (commonArtists.length === baseArtists.size) score += 2;
+        if (seedType === 'artist' && candidateArtists.has(seedItemId)) score += 6;
     }
 
-    // Album matching - minimal bonus
-    if (baseSong.albumId && candidate.albumId === baseSong.albumId) {
-        score += 2; // Reduced from 3
-        if (seedType === 'album' && candidate.albumId === seedItemId) {
-            score += 6; // Reduced from 8
-        }
+    if (base.albumId && candidate.albumId === base.albumId) {
+        score += 2;
+        if (seedType === 'album' && candidate.albumId === seedItemId) score += 6;
     }
 
-    // BPM matching - good for energy/tempo similarity
-    if (baseSong.bpm && candidate.bpm) {
-        const bpmDiff = Math.abs(baseSong.bpm - candidate.bpm);
-        if (bpmDiff <= 5) score += 12;
-        else if (bpmDiff <= 10) score += 8;
-        else if (bpmDiff <= 20) score += 4;
+    if (base.bpm && candidate.bpm) {
+        const diff = Math.abs(base.bpm - candidate.bpm);
+        if (diff <= 5) score += 12;
+        else if (diff <= 10) score += 8;
+        else if (diff <= 20) score += 4;
     }
 
-    // Year proximity - helps maintain era consistency
-    if (baseSong.year && candidate.year) {
-        const yearDiff = Math.abs(baseSong.year - candidate.year);
-        if (yearDiff <= 3) score += 8;
-        else if (yearDiff <= 7) score += 5;
-        else if (yearDiff <= 15) score += 2;
+    if (base.year && candidate.year) {
+        const diff = Math.abs(base.year - candidate.year);
+        if (diff <= 3) score += 8;
+        else if (diff <= 7) score += 5;
+        else if (diff <= 15) score += 2;
     }
 
-    // User preference factors - high importance
-    if (baseSong.starred && candidate.starred) score += 25;
+    if (base.starred && candidate.starred) score += 25;
 
-    if (baseSong.userRating && candidate.userRating) {
-        const ratingDiff = Math.abs(baseSong.userRating - candidate.userRating);
-        if (ratingDiff === 0) score += 20;
-        else if (ratingDiff <= 1) score += 15;
-        else if (ratingDiff <= 2) score += 8;
+    if (base.userRating && candidate.userRating) {
+        const diff = Math.abs(base.userRating - candidate.userRating);
+        if (diff === 0) score += 20;
+        else if (diff <= 1) score += 15;
+        else if (diff <= 2) score += 8;
     }
 
-    // Play count similarity
-    if (baseSong.playCount && candidate.playCount) {
-        const playDiff = Math.abs(baseSong.playCount - candidate.playCount);
-        const playSimilarity = Math.max(0, 20 - (playDiff / 5));
-        score += playSimilarity;
+    if (base.playCount && candidate.playCount) {
+        const diff = Math.abs(base.playCount - candidate.playCount);
+        score += Math.max(0, 20 - (diff / 5));
     }
 
     return score;

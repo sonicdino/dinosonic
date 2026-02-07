@@ -33,13 +33,11 @@ async function handleCreatePlaylist(c: Context) {
     let playlist: Playlist | null = null;
     let isUpdate = false;
 
-    // Check if we're updating an existing playlist
     if (playlistId) {
         isUpdate = true;
         playlist = (await database.get(['playlists', playlistId])).value as Playlist | null;
         if (!playlist) return createResponse(c, {}, 'failed', { code: 70, message: 'Playlist not found' });
 
-        // Check ownership
         if (playlist.owner !== user.backend.id && !isValidated.adminRole) {
             return createResponse(c, {}, 'failed', {
                 code: 50,
@@ -48,12 +46,10 @@ async function handleCreatePlaylist(c: Context) {
         }
     }
 
-    // Calculate total duration and collect valid songs
     let totalDuration = 0;
     const validSongIds = [];
     const entries = [];
 
-    // Validate songs and calculate duration
     for (const songId of songIds) {
         const song = (await database.get(['tracks', songId])).value as Song | null;
         if (!song) continue; // Skip invalid song IDs
@@ -71,9 +67,7 @@ async function handleCreatePlaylist(c: Context) {
         entries.push(song.subsonic);
     }
 
-    // Create new playlist or update existing one
     if (!isUpdate) {
-        // Generate a new ID for the playlist
         const newPlaylistId = await generateId();
 
         playlist = PlaylistSchema.parse({
@@ -88,7 +82,6 @@ async function handleCreatePlaylist(c: Context) {
             entry: validSongIds,
         });
     } else if (playlist) {
-        // Update existing playlist
         playlist.name = name || playlist.name;
         playlist.changed = new Date();
         playlist.entry = validSongIds;
@@ -96,7 +89,6 @@ async function handleCreatePlaylist(c: Context) {
         playlist.duration = totalDuration;
     }
 
-    // Save playlist to database
     if (playlist) {
         await database.set(['playlists', playlist.id], playlist);
         await updatePlaylistCover(playlist.id);

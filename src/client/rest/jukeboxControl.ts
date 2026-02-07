@@ -8,8 +8,8 @@ const player = new MpvPlayer();
 
 player.start();
 
-Deno.addSignalListener("SIGINT", async () => {
-    console.log("Caught interrupt signal. Shutting down player...");
+Deno.addSignalListener('SIGINT', async () => {
+    console.log('Caught interrupt signal. Shutting down player...');
     await player.stop();
     Deno.exit();
 });
@@ -56,7 +56,7 @@ function getJukeboxStatus() {
 function getJukeboxPlaylist() {
     return {
         ...getJukeboxStatus(),
-        entry: jukeboxState.playlist.map(song => song.subsonic),
+        entry: jukeboxState.playlist.map((song) => song.subsonic),
     };
 }
 
@@ -69,7 +69,8 @@ function shufflePlaylist() {
         currentIndex--;
 
         [jukeboxState.playlist[currentIndex], jukeboxState.playlist[randomIndex]] = [
-            jukeboxState.playlist[randomIndex], jukeboxState.playlist[currentIndex]
+            jukeboxState.playlist[randomIndex],
+            jukeboxState.playlist[currentIndex],
         ];
     }
 }
@@ -152,9 +153,7 @@ async function handleJukeboxControl(c: Context) {
         }
 
         case 'set': {
-            const previouslyPlayingSongId = jukeboxState.currentIndex > -1
-                ? jukeboxState.playlist[jukeboxState.currentIndex]?.subsonic.id
-                : null;
+            const previouslyPlayingSongId = jukeboxState.currentIndex > -1 ? jukeboxState.playlist[jukeboxState.currentIndex]?.subsonic.id : null;
 
             const songIdsToSet = ids || (id ? [id] : []);
             const newPlaylist: Song[] = [];
@@ -179,9 +178,7 @@ async function handleJukeboxControl(c: Context) {
                 return createResponse(c, { jukeboxStatus: getJukeboxStatus() });
             }
 
-            const newIndexOfOldSong = previouslyPlayingSongId
-                ? newPlaylist.findIndex(song => song.subsonic.id === previouslyPlayingSongId)
-                : -1;
+            const newIndexOfOldSong = previouslyPlayingSongId ? newPlaylist.findIndex((song) => song.subsonic.id === previouslyPlayingSongId) : -1;
 
             if (newIndexOfOldSong !== -1) {
                 jukeboxState.currentIndex = newIndexOfOldSong;

@@ -4,9 +4,8 @@ import { Song } from '../../zod.ts';
 import * as path from '@std/path';
 import { ensureDir } from '@std/fs/ensure-dir';
 import { exists } from '@std/fs/exists';
-import { getMatchingProfile } from '../../TranscodingProfileManager.ts';
 
-const stream = new Hono();
+const getTranscodeStream = new Hono();
 
 async function serveFile(c: Context, filePath: string, contentType: string) {
     try {
@@ -73,89 +72,85 @@ async function serveFile(c: Context, filePath: string, contentType: string) {
     }
 }
 
-async function handleStream(c: Context) {
+async function handleGetTranscodeStream(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
     if (!isValidated.streamRole) return createResponse(c, {}, 'failed', { code: 50, message: 'You have no permission to stream' });
 
-    const id = await getField(c, 'id');
-    if (!id) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });
+    const mediaId = await getField(c, 'mediaId');
+    if (!mediaId) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'mediaId'" });
 
-    const track = (await database.get(['tracks', id])).value as Song | null;
-    if (!track) return createResponse(c, {}, 'failed', { code: 70, message: 'Song not found' });
-
-    // Check for matching transcoding profile based on client info and user
-    const clientName = await getField(c, 'c');
-    const profile = await getMatchingProfile(isValidated.id, { clientName });
-
-    let format = await getField(c, 'format') || 'original';
-    let maxBitRate = parseInt(await getField(c, 'maxBitRate') || '0');
-    const timeOffset = parseInt(await getField(c, 'timeOffset') || '0');
-
-    if (format === 'raw') format = 'original';
-
-    if (profile) {
-        if (format === 'original' && profile.format) {
-            format = profile.format;
-        }
-        if (maxBitRate === 0 && profile.bitRate) {
-            maxBitRate = profile.bitRate;
-        }
-        if (profile.bitRate && maxBitRate > profile.bitRate) {
-            maxBitRate = profile.bitRate;
-        }
+    const mediaType = await getField(c, 'mediaType');
+    if (!mediaType || (mediaType !== 'song' && mediaType !== 'podcast')) {
+        return createResponse(c, {}, 'failed', {
+            code: 10,
+            message: "Bad Request: Invalid or missing mediaType parameter. Must be 'song' or 'podcast'",
+        });
     }
 
-    const isTranscoding = (format !== 'original') || maxBitRate > 0;
+    const transcodeParams = await getField(c, 'transcodeParams');
+    if (!transcodeParams) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'transcodeParams'" });
 
-    if (!isTranscoding) {
-        return serveFile(c, track.subsonic.path, track.subsonic.contentType || 'audio/mpeg');
-    }
+    const offset = parseInt(await getField(c, 'offset') || '0');
+
+    const track = (await database.get(['tracks', mediaId])).value as Song | null;
+    if (!track) return createResponse(c, {}, 'failed', { code: 70, message: `${mediaType === 'song' ? 'Song' : 'Podcast'} not found` });
 
     const ffmpegPath = config.transcoding?.ffmpeg_path || 'ffmpeg';
     if (!config.transcoding?.enabled) {
-        logger.warn(`Transcoding is disabled, but a transcode was requested for song ${id}. Serving original.`);
+        logger.warn(`Transcoding is disabled, but getTranscodeStream was requested for ${mediaType} ${mediaId}. Serving original.`);
         return serveFile(c, track.subsonic.path, track.subsonic.contentType || 'audio/mpeg');
     }
 
-    if (timeOffset > 0) {
-        logger.debug(`Live transcoding stream for song ${id} with offset ${timeOffset}s.`);
+    const paramsParts = transcodeParams.split('-');
+    if (paramsParts.length < 3) {
+        logger.error(`Invalid transcodeParams format: ${transcodeParams}`);
+        return createResponse(c, {}, 'failed', { code: 70, message: 'Bad Request: Invalid transcodeParams format' });
+    }
+
+    const targetContainer = paramsParts[1];
+    const targetBitrate = parseInt(paramsParts[2]);
+
+    logger.debug(`Transcoding stream for ${mediaType} ${mediaId}: container=${targetContainer}, bitrate=${targetBitrate}, offset=${offset}`);
+
+    if (offset > 0) {
         const ffmpegArgs = [
             '-i',
             track.subsonic.path,
             '-map_metadata',
             '-1',
             '-ss',
-            timeOffset.toString(),
+            offset.toString(),
             '-map',
             '0:a',
-            ...(maxBitRate > 0 ? ['-b:a', `${maxBitRate}k`] : []),
-            ...(format !== 'original' ? ['-f', format] : []),
+            '-b:a',
+            `${targetBitrate}`,
+            '-f',
+            targetContainer,
             'pipe:1',
         ];
 
         const ffmpeg = new Deno.Command(ffmpegPath, { args: ffmpegArgs, stdout: 'piped', stderr: 'piped' }).spawn();
         const stream = ffmpeg.stdout;
 
-        c.header('Content-Type', format === 'original' ? track.subsonic.contentType || 'audio/mpeg' : `audio/${format}`);
+        c.header('Content-Type', `audio/${targetContainer}`);
         c.header('Transfer-Encoding', 'chunked');
 
         return c.body(stream);
     }
 
-    const cacheSongsDir = path.join(globalThis.__tmpDir, 'cache', 'songs');
+    const cacheSongsDir = path.join(globalThis.__tmpDir, 'cache', 'transcode-songs');
     await ensureDir(cacheSongsDir);
 
-    const effectiveFormat = format === 'original' ? path.extname(track.subsonic.path).substring(1) || 'mp3' : format;
-    const cachedSongPath = path.join(cacheSongsDir, `${id}_${maxBitRate}k.${effectiveFormat}`);
+    const cachedSongPath = path.join(cacheSongsDir, `${mediaId}_${targetBitrate}.${targetContainer}`);
     const tempCachedSongPath = `${cachedSongPath}.${Date.now()}.tmp`;
 
     if (await exists(cachedSongPath)) {
-        logger.debug(`Serving cached transcoded song: ${cachedSongPath}`);
-        return serveFile(c, cachedSongPath, `audio/${effectiveFormat}`);
+        logger.debug(`Serving cached transcoded ${mediaType}: ${cachedSongPath}`);
+        return serveFile(c, cachedSongPath, `audio/${targetContainer}`);
     }
 
-    logger.debug(`Transcoding and caching song ${id} to ${cachedSongPath}`);
+    logger.debug(`Transcoding and caching ${mediaType} ${mediaId} to ${cachedSongPath}`);
     const process = new Deno.Command(ffmpegPath, {
         args: [
             '-i',
@@ -164,8 +159,10 @@ async function handleStream(c: Context) {
             '-1',
             '-map',
             '0:a',
-            ...(maxBitRate > 0 ? ['-b:a', `${maxBitRate}k`] : []),
-            ...(format !== 'original' ? ['-f', format] : []),
+            '-b:a',
+            `${targetBitrate}`,
+            '-f',
+            targetContainer,
             '-y',
             tempCachedSongPath,
         ],
@@ -177,26 +174,26 @@ async function handleStream(c: Context) {
         const { success, stderr } = await process.output();
         if (!success) {
             const errorMsg = new TextDecoder().decode(stderr);
-            logger.error(`FFmpeg failed for song ${id}: ${errorMsg}`);
+            logger.error(`FFmpeg failed for ${mediaType} ${mediaId}: ${errorMsg}`);
             if (await exists(tempCachedSongPath)) await Deno.remove(tempCachedSongPath);
-            return createResponse(c, {}, 'failed', { code: 40, message: 'Error during transcoding' });
+            return createResponse(c, {}, 'failed', { code: 70, message: 'Server Error: Transcoding failed' });
         }
 
         await Deno.rename(tempCachedSongPath, cachedSongPath);
 
         logger.debug(`Finished caching ${cachedSongPath}, now serving.`);
-        return serveFile(c, cachedSongPath, `audio/${effectiveFormat}`);
+        return serveFile(c, cachedSongPath, `audio/${targetContainer}`);
         // deno-lint-ignore no-explicit-any
     } catch (e: any) {
-        logger.error(`Error during FFmpeg processing for song ${id}: ${e.message}.`);
+        logger.error(`Error during FFmpeg processing for ${mediaType} ${mediaId}: ${e.message}.`);
         if (await exists(tempCachedSongPath)) await Deno.remove(tempCachedSongPath);
-        return createResponse(c, {}, 'failed', { code: 40, message: 'Server error during transcoding' });
+        return createResponse(c, {}, 'failed', { code: 70, message: 'Server Error: Transcoding failed' });
     }
 }
 
-stream.get('/stream', handleStream);
-stream.post('/stream', handleStream);
-stream.get('/stream.view', handleStream);
-stream.post('/stream.view', handleStream);
+getTranscodeStream.get('/getTranscodeStream', handleGetTranscodeStream);
+getTranscodeStream.post('/getTranscodeStream', handleGetTranscodeStream);
+getTranscodeStream.get('/getTranscodeStream.view', handleGetTranscodeStream);
+getTranscodeStream.post('/getTranscodeStream.view', handleGetTranscodeStream);
 
-export default stream;
+export default getTranscodeStream;

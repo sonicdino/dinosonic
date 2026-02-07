@@ -2,16 +2,18 @@ import { checkInternetConnection, config, logger, signParams } from './util.ts';
 import { Song, User } from './zod.ts';
 
 export async function getArtistInfo(artist: string) {
-    const reqUrl = `https://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist=${encodeURIComponent(artist)
-        }&api_key=${config.last_fm?.api_key}&format=json`;
+    const reqUrl = `https://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist=${
+        encodeURIComponent(artist)
+    }&api_key=${config.last_fm?.api_key}&format=json`;
     const req = await fetch(reqUrl);
     if (!req.ok) return;
     return req.json();
 }
 
 export async function getAlbumInfo(title: string, artist: string) {
-    const reqUrl = `https://ws.audioscrobbler.com/2.0/?method=album.getinfo&artist=${encodeURIComponent(artist)
-        }&album=${title}&api_key=${config.last_fm?.api_key}&format=json`;
+    const reqUrl = `https://ws.audioscrobbler.com/2.0/?method=album.getinfo&artist=${
+        encodeURIComponent(artist)
+    }&album=${title}&api_key=${config.last_fm?.api_key}&format=json`;
     const req = await fetch(reqUrl);
     if (!req.ok) return;
     const json = await req.json();
@@ -19,8 +21,9 @@ export async function getAlbumInfo(title: string, artist: string) {
 }
 
 export async function getTopTracks(artist: string, count = 50, mbid?: string) {
-    const reqUrl = `https://ws.audioscrobbler.com/2.0/?method=artist.gettoptracks&${mbid ? `mbid=${encodeURIComponent(mbid)}` : `artist=${encodeURIComponent(artist)}`
-        }&count=${count}&api_key=${config.last_fm?.api_key}&format=json`;
+    const reqUrl = `https://ws.audioscrobbler.com/2.0/?method=artist.gettoptracks&${
+        mbid ? `mbid=${encodeURIComponent(mbid)}` : `artist=${encodeURIComponent(artist)}`
+    }&count=${count}&api_key=${config.last_fm?.api_key}&format=json`;
     const req = await fetch(reqUrl);
     if (!req.ok) return;
     const json = await req.json();
@@ -47,7 +50,9 @@ export async function getSimilarTracks(artist: string, track: string, limit = 50
     }
 
     try {
-        const reqUrl = `https://ws.audioscrobbler.com/2.0/?method=track.getSimilar&artist=${encodeURIComponent(artist)}&track=${encodeURIComponent(track)}&limit=${limit}&api_key=${config.last_fm.api_key}&format=json`;
+        const reqUrl = `https://ws.audioscrobbler.com/2.0/?method=track.getSimilar&artist=${encodeURIComponent(artist)}&track=${
+            encodeURIComponent(track)
+        }&limit=${limit}&api_key=${config.last_fm.api_key}&format=json`;
         const response = await fetch(reqUrl);
 
         if (!response.ok) {
@@ -203,7 +208,7 @@ export async function getUserLovedTracksMap(username: string): Promise<Map<strin
                     const errorData = await response.json();
                     errorMsg = errorData.message || errorMsg;
                     // deno-lint-ignore no-empty
-                } catch (_) { }
+                } catch (_) {}
                 logger.error(
                     `Last.fm: Failed to fetch loved tracks page ${currentPage} for "${username}". Status: ${response.status}, Error: ${errorMsg}`,
                 );
@@ -283,7 +288,8 @@ export async function scrobble(user: User, submission: boolean, time: Date, trac
                 const data = await response.json();
                 if (!response.ok || data.error) {
                     logger.error(
-                        `Last.fm: Failed to ${submission ? 'scrobble' : 'updateNowPlaying'
+                        `Last.fm: Failed to ${
+                            submission ? 'scrobble' : 'updateNowPlaying'
                         } for track ${track.subsonic.artist} - ${track.subsonic.title}. Error: ${data.message || response.statusText}`,
                     );
                     return false;
@@ -291,7 +297,8 @@ export async function scrobble(user: User, submission: boolean, time: Date, trac
                 return true;
             } catch (error) {
                 logger.error(
-                    `Last.fm: Exception during ${submission ? 'scrobble' : 'updateNowPlaying'
+                    `Last.fm: Exception during ${
+                        submission ? 'scrobble' : 'updateNowPlaying'
                     } for track ${track.subsonic.artist} - ${track.subsonic.title}: ${error}`,
                 );
                 return false;

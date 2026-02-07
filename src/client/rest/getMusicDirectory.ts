@@ -10,7 +10,6 @@ async function handlegetMusicDirectory(c: Context) {
     const id = parseInt(await getField(c, 'id') || '0');
     if (!id) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });
 
-    // Dinosonic is not the only Subsonic-like server that does this tomfoolery.
     return createResponse(c, {}, 'failed', { code: 70, message: 'Music directory not found' });
 }
 

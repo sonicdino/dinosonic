@@ -17,6 +17,11 @@
         "indentWidth": 4,
         "singleQuote": true
     },
+    "lint": {
+        "exclude": [
+            "src/client/public/tailwindcss.min.js"
+        ]
+    },
     "imports": {
         "@hono/hono": "jsr:@hono/hono@^4.7.8",
         "@libs/xml": "jsr:@libs/xml@^6.0.4",

@@ -12,7 +12,6 @@ const API_URL = 'https://api.listenbrainz.org';
  * @returns True on success, false on failure.
  */
 export async function scrobble(user: User, submission: boolean, time: Date, track: Song) {
-    // The token is now expected to be manually set by the user in their profile.
     if (!config.listenbrainz?.enable_scrobbling || !user?.backend.listenBrainzToken) {
         return false;
     }
@@ -28,8 +27,8 @@ export async function scrobble(user: User, submission: boolean, time: Date, trac
                     track_name: track.subsonic.title,
                     release_name: track.subsonic.album,
                     additional_info: {
-                        duration: track.subsonic.duration
-                    }
+                        duration: track.subsonic.duration,
+                    },
                 },
             },
         ],

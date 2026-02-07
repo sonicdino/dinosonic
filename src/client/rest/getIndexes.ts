@@ -8,8 +8,9 @@ async function handlegetIndexes(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
 
-    const id = parseInt(await getField(c, 'musicFolderId') || '0');
-    if (!id) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'id'" });
+    const musicFolderId = parseInt(await getField(c, 'musicFolderId') || '1');
+    // Currently only one virtual music folder (id: 1) is supported
+    if (musicFolderId !== 1) return createResponse(c, { indexes: { index: [] } }, 'ok');
 
     const artists = (await Array.fromAsync(database.list({ prefix: ['artists'] }))).map((artist) => (artist.value as Artist));
 

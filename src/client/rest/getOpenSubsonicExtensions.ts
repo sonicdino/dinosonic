@@ -19,13 +19,17 @@ function handlegetOpenSubsonicExtensions(c: Context) {
                 versions: [1],
             },
             {
-                name: 'songLyrics',
+                name: 'indexBasedQueue',
                 versions: [1],
             },
             {
-                name: 'indexBasedQueue',
+                name: 'transcoding',
                 versions: [1],
-            }
+            },
+            {
+                name: 'apiKeyAuthentication',
+                versions: [1],
+            },
         ],
     }, 'ok');
 }

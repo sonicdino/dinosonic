@@ -1,5 +1,5 @@
 import { database } from './util.ts';
-import { TranscodingProfileSchema, TranscodingProfile } from './zod.ts';
+import { TranscodingProfile, TranscodingProfileSchema } from './zod.ts';
 
 /**
  * Creates a new transcoding profile for a user
@@ -106,12 +106,15 @@ export async function deleteTranscodingProfile(userId: string, id: string): Prom
  * @param clientInfo Information about the requesting client (client name, etc.)
  * @returns The most appropriate profile or null if no match
  */
-// deno-lint-ignore no-explicit-any
-export async function getMatchingProfile(userId: string, clientInfo: { clientName?: string, [key: string]: any }): Promise<TranscodingProfile | null> {
+export async function getMatchingProfile(
+    userId: string,
+    // deno-lint-ignore no-explicit-any
+    clientInfo: { clientName?: string; [key: string]: any },
+): Promise<TranscodingProfile | null> {
     const allProfiles = await getAllTranscodingProfiles(userId);
 
     // Filter to enabled profiles only
-    const enabledProfiles = allProfiles.filter(profile => profile.enabled);
+    const enabledProfiles = allProfiles.filter((profile) => profile.enabled);
 
     // Try to match by client name first
     if (clientInfo.clientName) {
@@ -140,5 +143,5 @@ export async function getMatchingProfile(userId: string, clientInfo: { clientNam
 function generateId(): string {
     const array = new Uint8Array(16);
     crypto.getRandomValues(array);
-    return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+    return Array.from(array, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }

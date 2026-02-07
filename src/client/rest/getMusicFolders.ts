@@ -7,7 +7,6 @@ async function handlegetMusicFolders(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
 
-    // Hard coded "virtual" music folder. This is because it is unecessarry to just display the actual dir since we just walked through the directory. the music folder will be an imitation.
     return createResponse(c, {
         musicFolders: {
             musicFolder: [

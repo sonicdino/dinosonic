@@ -36,7 +36,7 @@ async function handlegetPlayQueueByIndex(c: Context) {
         username: playQueue.username,
         changed: playQueue.changed,
         changedBy: playQueue.changedBy,
-        entry
+        entry,
     });
 
     if (!playQueueByIndex.success) {

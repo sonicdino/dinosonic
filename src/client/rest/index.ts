@@ -52,6 +52,13 @@ import getShares from './getShares.ts';
 import deleteShare from './deleteShare.ts';
 import updateShare from './updateShare.ts';
 import jukebox from './jukeboxControl.ts';
+import getInternetRadioStations from './getInternetRadioStations.ts';
+import createInternetRadioStation from './createInternetRadioStation.ts';
+import updateInternetRadioStation from './updateInternetRadioStation.ts';
+import deleteInternetRadioStation from './deleteInternetRadioStation.ts';
+import getTranscodeDecision from './getTranscodeDecision.ts';
+import getTranscodeStream from './getTranscodeStream.ts';
+import tokenInfo from './tokenInfo.ts';
 
 restRoutes.route('/', ping);
 restRoutes.route('/', getLicense);
@@ -102,6 +109,13 @@ restRoutes.route('/', createShare);
 restRoutes.route('/', getShares);
 restRoutes.route('/', deleteShare);
 restRoutes.route('/', updateShare);
-restRoutes.route('/', jukebox)
+restRoutes.route('/', jukebox);
+restRoutes.route('/', getInternetRadioStations);
+restRoutes.route('/', createInternetRadioStation);
+restRoutes.route('/', updateInternetRadioStation);
+restRoutes.route('/', deleteInternetRadioStation);
+restRoutes.route('/', getTranscodeDecision);
+restRoutes.route('/', getTranscodeStream);
+restRoutes.route('/', tokenInfo);
 
 export default restRoutes;

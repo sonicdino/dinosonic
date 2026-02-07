@@ -35,10 +35,7 @@ async function handlesavePlayQueueByIndex(c: Context) {
     if (!entry.length) return createResponse(c, {}, 'ok');
 
     if (isNaN(currentIndex) || currentIndex < 0 || currentIndex >= entry.length) {
-        return createResponse(c, {}, 'failed', {
-            code: 10,
-            message: 'currentIndex must be between 0 and length of queue - 1'
-        });
+        return createResponse(c, {}, 'failed', { code: 10, message: 'currentIndex must be between 0 and length of queue - 1' });
     }
 
     const playQueue = PlayQueueByIndexSchema.safeParse({

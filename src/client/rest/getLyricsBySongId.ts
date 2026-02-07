@@ -44,7 +44,13 @@ async function handlegetLyricsBySongId(c: Context) {
     }
 
     if (!lyrics) {
-        lyrics = await fetchLyrics(track.subsonic.title, track.subsonic.artists.map(artists => artists.name).join(", "), track.subsonic.artist, track.subsonic.album, track.subsonic.duration);
+        lyrics = await fetchLyrics(
+            track.subsonic.title,
+            track.subsonic.artists.map((artists) => artists.name).join(', '),
+            track.subsonic.artist,
+            track.subsonic.album,
+            track.subsonic.duration,
+        );
 
         if (lyrics) {
             try {
@@ -68,8 +74,8 @@ async function handlegetLyricsBySongId(c: Context) {
         .filter((item): item is { start: number; value: string } => item !== null && item.value !== '');
 
     const unsyncedLyrics = lines
-        .filter(line => !line.startsWith('['))
-        .map(value => ({ value }));
+        .filter((line) => !line.startsWith('['))
+        .map((value) => ({ value }));
 
     const structuredLyrics = [];
     if (syncedLyrics.length > 0) {
@@ -96,8 +102,9 @@ async function handlegetLyricsBySongId(c: Context) {
 }
 
 async function _searchLrclib(artistNameToSearch: string, trackName: string, albumName: string, duration: number): Promise<string | null> {
-    const lrclibGetUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(trackName)}&artist_name=${encodeURIComponent(artistNameToSearch)
-        }&album_name=${encodeURIComponent(albumName)}&duration=${encodeURIComponent(duration)}`;
+    const lrclibGetUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(trackName)}&artist_name=${
+        encodeURIComponent(artistNameToSearch)
+    }&album_name=${encodeURIComponent(albumName)}&duration=${encodeURIComponent(duration)}`;
 
     try {
         const lrclibGetResponse = await fetch(lrclibGetUrl);

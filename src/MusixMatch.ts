@@ -86,7 +86,7 @@ class MusixmatchProvider {
         const res = await response.json();
 
         if (res.message.header.status_code === 401) {
-            await new Promise(resolve => setTimeout(resolve, 13000));
+            await new Promise((resolve) => setTimeout(resolve, 13000));
             return this._getToken();
         }
 

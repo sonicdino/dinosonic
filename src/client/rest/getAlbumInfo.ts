@@ -39,7 +39,7 @@ async function handleGetAlbumInfo(c: Context) {
         albumInfoResponse = infoCopy;
     }
 
-    return createResponse(c, { albumInfo: albumInfoResponse, }, 'ok');
+    return createResponse(c, { albumInfo: albumInfoResponse }, 'ok');
 }
 
 getAlbumInfo.get('/getAlbumInfo', handleGetAlbumInfo);

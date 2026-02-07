@@ -2,7 +2,6 @@ import { Context, Hono } from '@hono/hono';
 import { createResponse, database, getUserByUsername, logger, validateAuth } from '../../util.ts';
 import { ArtistID3, ArtistSchema, userData } from '../../zod.ts'; // ArtistSchema
 
-// Helper function to format URL (can be shared or defined locally)
 function formatFullUrl(c: Context, relativeUrl?: string): string | undefined {
     if (!relativeUrl) return undefined;
     const requestUrl = new URL(c.req.url);
@@ -36,19 +35,15 @@ async function handleGetArtists(c: Context) {
             if (userArtistData.userRating) artistForResponse.userRating = userArtistData.userRating;
         }
 
-        // Format artistImageUrl with base URL
         // artistData.artist.artistImageUrl should be the relative proxied path from MediaScanner
         artistForResponse.artistImageUrl = formatFullUrl(c, artistData.artist.artistImageUrl);
 
-        // The 'album' array in ArtistID3 for getArtists is usually empty or not detailed.
-        // Subsonic clients typically fetch full artist details with getArtist.
         // @ts-expect-error For getArtists, album list is usually not populated or is minimal.
         delete artistForResponse.album;
 
         artistsResponseList.push(artistForResponse);
     }
 
-    // Grouping and sorting logic from your original code
     const groupedArtists: Record<string, ArtistID3[]> = {};
     for (const artist of artistsResponseList) {
         const firstChar = artist.name[0].toUpperCase();
@@ -71,7 +66,7 @@ async function handleGetArtists(c: Context) {
         }));
 
     return createResponse(c, {
-        artists: { ignoredArticles: "", index: sortedIndexList },
+        artists: { ignoredArticles: '', index: sortedIndexList },
     }, 'ok');
 }
 

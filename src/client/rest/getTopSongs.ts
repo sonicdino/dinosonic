@@ -44,7 +44,7 @@ async function handlegetTopSongs(c: Context) {
                 const songParseResult = SongSchema.safeParse(entry.value);
                 if (songParseResult.success) {
                     const localSong = songParseResult.data;
-                    if (localSong.subsonic.artists.some(a => a.id === artist.artist.id)) {
+                    if (localSong.subsonic.artists.some((a) => a.id === artist.artist.id)) {
                         const lfmMatch = lastFmTopSongs.find((lfmSong: { name: string; rank: number }) =>
                             localSong.subsonic.title.toLowerCase().trim() === lfmSong.name.toLowerCase().trim()
                         );
@@ -58,7 +58,10 @@ async function handlegetTopSongs(c: Context) {
             topSongsResult = localSongsForArtist
                 .sort((a, b) => a.rank - b.rank)
                 .slice(0, count)
-                .map(s => { delete (s as { rank?: number }).rank; return s; });
+                .map((s) => {
+                    delete (s as { rank?: number }).rank;
+                    return s;
+                });
         } else {
             logger.debug(`No top songs returned from Last.fm for '${artist.artist.name}'. Falling back to local method.`);
             // Fall through to local method by not setting topSongsResult or ensuring it's empty
@@ -66,8 +69,11 @@ async function handlegetTopSongs(c: Context) {
     }
 
     if (!useLastFm || topSongsResult.length === 0) {
-        if (!useLastFm) logger.debug(`Last.fm not available. Fetching top songs for '${artist.artist.name}' locally for user ${user.subsonic.username}.`);
-        else logger.debug(`Last.fm returned no results. Fetching top songs for '${artist.artist.name}' locally for user ${user.subsonic.username}.`);
+        if (!useLastFm) {
+            logger.debug(`Last.fm not available. Fetching top songs for '${artist.artist.name}' locally for user ${user.subsonic.username}.`);
+        } else {logger.debug(
+                `Last.fm returned no results. Fetching top songs for '${artist.artist.name}' locally for user ${user.subsonic.username}.`,
+            );}
 
         const songsByArtistWithPlaycount: { song: SongID3; playCount: number }[] = [];
         let hasAnyUserDataForArtist = false;
@@ -76,8 +82,10 @@ async function handlegetTopSongs(c: Context) {
             const songParseResult = SongSchema.safeParse(entry.value);
             if (songParseResult.success) {
                 const localSongFull = songParseResult.data;
-                if (localSongFull.subsonic.artists.some(a => a.id === artist.artist.id)) {
-                    const userTrackData = (await database.get(['userData', user.backend.id, 'track', localSongFull.subsonic.id])).value as userData | undefined;
+                if (localSongFull.subsonic.artists.some((a) => a.id === artist.artist.id)) {
+                    const userTrackData = (await database.get(['userData', user.backend.id, 'track', localSongFull.subsonic.id])).value as
+                        | userData
+                        | undefined;
                     const playCount = userTrackData?.playCount || 0;
                     if (playCount > 0) {
                         hasAnyUserDataForArtist = true; // Mark that we found some play history
@@ -94,10 +102,12 @@ async function handlegetTopSongs(c: Context) {
             topSongsResult = songsByArtistWithPlaycount
                 .sort((a, b) => b.playCount - a.playCount)
                 .slice(0, count)
-                .map(item => item.song);
+                .map((item) => item.song);
         } else {
             // No userData with playcounts for this artist by this user, fallback to simple first 'count' songs
-            logger.debug(`No play count data for artist '${artist.artist.name}' by user ${user.subsonic.username}. Falling back to first ${count} tracks.`);
+            logger.debug(
+                `No play count data for artist '${artist.artist.name}' by user ${user.subsonic.username}. Falling back to first ${count} tracks.`,
+            );
             // songsByArtistWithPlaycount already contains all songs by the artist.
             // We can sort them by album, then track number for a somewhat sensible default.
             topSongsResult = songsByArtistWithPlaycount
@@ -107,7 +117,7 @@ async function handlegetTopSongs(c: Context) {
                     return (a.song.track || 0) - (b.song.track || 0);
                 })
                 .slice(0, count)
-                .map(item => item.song);
+                .map((item) => item.song);
         }
     }
 

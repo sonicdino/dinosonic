@@ -2,7 +2,6 @@ import { Context, Hono } from '@hono/hono';
 import { createResponse, database, getField, getUserByUsername, validateAuth } from '../../util.ts';
 import { AlbumID3, AlbumSchema, ArtistID3, ArtistSchema, userData } from '../../zod.ts'; // ArtistSchema for parsing
 
-// Helper function to format URL (can be shared or defined locally)
 function formatFullUrl(c: Context, relativeUrl?: string): string | undefined {
     if (!relativeUrl) return undefined;
     const requestUrl = new URL(c.req.url);
@@ -32,21 +31,16 @@ async function handleGetArtist(c: Context) {
     const user = await getUserByUsername(isValidated.username);
     if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });
 
-    // Prepare the artist object for the response (ArtistID3 structure)
     const artistResponse: ArtistID3 = { ...artistData.artist }; // Start with the ArtistID3 part
 
-    // Add user-specific data
     const userArtistData = (await database.get(['userData', user.backend.id, 'artist', artistId])).value as userData | undefined;
     if (userArtistData) {
         if (userArtistData.starred) artistResponse.starred = userArtistData.starred.toISOString();
         if (userArtistData.userRating) artistResponse.userRating = userArtistData.userRating;
     }
 
-    // Format artistImageUrl with base URL
-    // It uses artistData.artist.artistImageUrl which should already be the proxied one after MediaScanner runs
     artistResponse.artistImageUrl = formatFullUrl(c, artistData.artist.artistImageUrl);
 
-    // Process albums
     const responseAlbums: AlbumID3[] = [];
     if (Array.isArray(artistData.artist.album)) {
         for (const albumIdOrObject of artistData.artist.album) {
@@ -74,7 +68,6 @@ async function handleGetArtist(c: Context) {
             }
         }
     }
-    // Sort albums if needed (e.g., by year or name, original code sorted by id number)
     artistResponse.album = responseAlbums.sort((a, b) => {
         const numA = parseInt(a.id.replace(/[^0-9]/g, ''), 10) || 0;
         const numB = parseInt(b.id.replace(/[^0-9]/g, ''), 10) || 0;

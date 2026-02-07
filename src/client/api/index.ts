@@ -34,10 +34,10 @@ import { exists } from '@std/fs/exists';
 import { validateToken } from '../../ListenBrainz.ts';
 import {
     createTranscodingProfile,
-    updateTranscodingProfile,
-    getTranscodingProfile,
+    deleteTranscodingProfile,
     getAllTranscodingProfiles,
-    deleteTranscodingProfile
+    getTranscodingProfile,
+    updateTranscodingProfile,
 } from '../../TranscodingProfileManager.ts';
 const api = new Hono();
 
@@ -434,7 +434,7 @@ api.get('/users', async (c: Context) => {
     if (!sessionUser.user.adminRole) {
         return c.json({
             currentUser: sessionUser.user,
-            users: [sessionUser.user]
+            users: [sessionUser.user],
         });
     }
 
@@ -464,6 +464,7 @@ api.post('/users', async (c: Context) => {
             id: await generateId(),
             username: username.toLowerCase(),
             password,
+            apiKeys: [],
         },
         subsonic: {
             username,
@@ -770,6 +771,95 @@ api.delete('/transcoding-profiles/:id', async (c: Context) => {
         logger.error(`Error deleting transcoding profile ${id}:`, error);
         return c.json({ error: 'Failed to delete transcoding profile' }, 500);
     }
+});
+
+// API Key Management
+api.get('/api-keys', async (c: Context) => {
+    const sessionUser = c.get('user') as { user: SubsonicUser; id: string; exp: number };
+    if (!sessionUser?.user.username) {
+        return c.json({ success: false, error: 'Authentication required.' }, 401);
+    }
+
+    const user = await getUserByUsername(sessionUser.user.username);
+    if (!user) {
+        return c.json({ success: false, error: 'User not found.' }, 404);
+    }
+
+    const keys = (user.backend.apiKeys || []).map((k) => ({
+        name: k.name || 'Unnamed',
+        created: k.created,
+        lastUsed: k.lastUsed,
+        keyPreview: `${k.key.substring(0, 8)}...${k.key.substring(k.key.length - 4)}`,
+        key: k.key,
+    }));
+
+    return c.json({ success: true, keys });
+});
+
+api.post('/api-keys', async (c: Context) => {
+    const sessionUser = c.get('user') as { user: SubsonicUser; id: string; exp: number };
+    if (!sessionUser?.user.username) {
+        return c.json({ success: false, error: 'Authentication required.' }, 401);
+    }
+
+    let body;
+    try {
+        body = await c.req.json();
+    } catch (_) {
+        return c.json({ success: false, error: 'Invalid request body. Expected JSON.' }, 400);
+    }
+
+    const name = body.name || 'Unnamed API Key';
+
+    const user = await getUserByUsername(sessionUser.user.username);
+    if (!user) {
+        return c.json({ success: false, error: 'User not found.' }, 500);
+    }
+
+    const apiKey = await generateId(64);
+    const newKey = {
+        key: apiKey,
+        name,
+        created: new Date(),
+    };
+
+    if (!user.backend.apiKeys) user.backend.apiKeys = [];
+    user.backend.apiKeys.push(newKey);
+    await database.set(['users', user.backend.id], user);
+
+    logger.info(`Created API key for user: ${user.subsonic.username}`);
+
+    return c.json({ success: true, apiKey, name, created: newKey.created });
+});
+
+api.delete('/api-keys/:keyPreview', async (c: Context) => {
+    const sessionUser = c.get('user') as { user: SubsonicUser; id: string; exp: number };
+    if (!sessionUser?.user.username) {
+        return c.json({ success: false, error: 'Authentication required.' }, 401);
+    }
+
+    const { keyPreview } = c.req.param();
+    const user = await getUserByUsername(sessionUser.user.username);
+    if (!user) {
+        return c.json({ success: false, error: 'User not found.' }, 404);
+    }
+
+    if (!user.backend.apiKeys) {
+        return c.json({ success: false, error: 'No API keys found.' }, 404);
+    }
+
+    const keyIndex = user.backend.apiKeys.findIndex((k) => `${k.key.substring(0, 8)}...${k.key.substring(k.key.length - 4)}` === keyPreview);
+
+    if (keyIndex === -1) {
+        return c.json({ success: false, error: 'API key not found.' }, 404);
+    }
+
+    user.backend.apiKeys.splice(keyIndex, 1);
+    await database.set(['users', user.backend.id], user);
+
+    logger.info(`Revoked API key for user: ${user.subsonic.username}`);
+
+    return c.json({ success: true, message: 'API key revoked successfully' });
 });
 
 export default api;

@@ -22,3 +22,8 @@ lerna-debug.log*
 .DS_Store
 Thumbs.db
 config.toml
+
+*.bak
+*.backup
+*.old
+*.orig

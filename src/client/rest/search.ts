@@ -16,7 +16,17 @@ async function handlesearch(c: Context) {
     const albumOffset = parseInt(await getField(c, 'albumOffset') || '0');
     const songCount = parseInt(await getField(c, 'songCount') || '20');
     const songOffset = parseInt(await getField(c, 'songOffset') || '0');
-    // const musicFolderId = await getField(c, "musicFolderId") || "";
+    const musicFolderId = parseInt(await getField(c, 'musicFolderId') || '1');
+    // Currently only one virtual music folder (id: 1) is supported
+    if (musicFolderId !== 1) {
+        return createResponse(c, {
+            searchResult: {
+                artist: [],
+                album: [],
+                song: [],
+            },
+        }, 'ok');
+    }
 
     const user = await getUserByUsername(isValidated.username);
     if (!user) return createResponse(c, {}, 'failed', { code: 0, message: "Logged in user doesn't exist?" });

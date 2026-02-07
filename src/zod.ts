@@ -16,6 +16,10 @@ export const CoverArtSchema = z.object({
     id: z.string(),
     mimeType: z.string(),
     path: z.string(),
+    source: z.enum(['embedded', 'local', 'musicbrainz', 'lastfm', 'spotify', 'unknown']).optional(),
+    width: z.number().optional(),
+    height: z.number().optional(),
+    fileSize: z.number().optional(),
 });
 
 export const TranscodingProfileSchema = z.object({
@@ -47,7 +51,11 @@ export const ConfigLastFMOptionSchema = z.object({
 
 export const ConfigListenBrainzOptionSchema = z.object({
     enable_scrobbling: z.boolean().default(false),
-})
+});
+
+export const ConfigMusicBrainzOptionSchema = z.object({
+    enabled: z.boolean().default(true),
+});
 
 export const ConfigSpotifyOptionSchema = z.object({
     enabled: z.boolean().default(false),
@@ -69,6 +77,7 @@ export const ConfigSchema = z.object({
     transcoding: ConfigTranscodingOptionSchema.default({ enabled: true, ffmpeg_path: 'ffmpeg' }),
     last_fm: ConfigLastFMOptionSchema.optional(),
     listenbrainz: ConfigListenBrainzOptionSchema.optional(),
+    musicbrainz: ConfigMusicBrainzOptionSchema.optional(),
     spotify: ConfigSpotifyOptionSchema.optional(),
     music_folders: z.array(z.string()).default([]),
     scan_on_start: z.boolean().default(false),
@@ -306,12 +315,20 @@ export const PlayQueueByIndexSchema = z.object({
     entry: z.array(z.string().or(SongID3Schema)).optional(),
 });
 
+export const ApiKeySchema = z.object({
+    key: z.string(),
+    name: z.string().optional(),
+    created: z.date(),
+    lastUsed: z.date().optional(),
+});
+
 export const BackendUserSchema = z.object({
     id: z.string(),
     username: z.string(),
     password: z.string(),
     lastFMSessionKey: z.string().optional(),
     listenBrainzToken: z.string().optional(),
+    apiKeys: z.array(ApiKeySchema).optional().default([]),
 });
 
 export const UserSchema = z.object({
@@ -345,6 +362,13 @@ export const ShareSchema = z.object({
     viewCount: z.number().default(0),
 });
 
+export const InternetRadioStationSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+    steamUrl: z.string(),
+    homepageUrl: z.string().optional(),
+});
+
 export type userData = z.infer<typeof userDataSchema>;
 export type CoverArt = z.infer<typeof CoverArtSchema>;
 export type TranscodingProfile = z.infer<typeof TranscodingProfileSchema>;
@@ -371,8 +395,10 @@ export type PlayQueueByIndex = z.infer<typeof PlayQueueByIndexSchema>;
 export type SubsonicUser = z.infer<typeof SubsonicUserSchema>;
 export type BackendUser = z.infer<typeof BackendUserSchema>;
 export type User = z.infer<typeof UserSchema>;
+export type ApiKey = z.infer<typeof ApiKeySchema>;
 export type Playlist = z.infer<typeof PlaylistSchema>;
 export type Share = z.infer<typeof ShareSchema>;
+export type InternetRadioStation = z.infer<typeof InternetRadioStationSchema>;
 
 export interface nowPlaying {
     track: SongID3;

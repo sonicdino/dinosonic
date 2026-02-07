@@ -12,6 +12,9 @@ async function handlegetAlbumList(c: Context) {
     const size = parseInt(await getField(c, 'size') || '10');
     const offset = parseInt(await getField(c, 'offset') || '0');
     const genre = await getField(c, 'genre');
+    const musicFolderId = parseInt(await getField(c, 'musicFolderId') || '1');
+    // Currently only one virtual music folder (id: 1) is supported
+    if (musicFolderId !== 1) return createResponse(c, { albumList: [] }, 'ok');
 
     let fromYear: number, toYear: number;
 
@@ -25,7 +28,6 @@ async function handlegetAlbumList(c: Context) {
 
         fromYear = parseInt(fromYearStr);
         toYear = parseInt(toYearStr);
-
     }
     if (type === 'byGenre' && !genre) return createResponse(c, {}, 'failed', { code: 10, message: "Missing parameter: 'genre'" });
 

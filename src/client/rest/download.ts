@@ -16,12 +16,13 @@ async function handledownload(c: Context) {
     if (!track) return createResponse(c, {}, 'failed', { code: 70, message: 'Song not found' });
 
     const filename = basename(track.subsonic.path);
-
+    const asciiFilename = filename.replace(/[^\x20-\x7E]/g, '_');
+    const encodedFilename = encodeURIComponent(filename);
     const file = await Deno.readFile(track.subsonic.path);
     return new Response(file, {
         headers: {
             'Content-Type': track.subsonic.contentType || 'audio/mpeg',
-            'Content-Disposition': `attachment; filename="${filename}"`,
+            'Content-Disposition': `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`,
         },
     });
 }
