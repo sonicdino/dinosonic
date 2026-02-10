@@ -34,10 +34,9 @@ async function handlegetSimilarSongs(c: Context) {
             const maxScore = Math.max(...seedResult.seeds.map((seed) => calculateSimilarity(seed, song, seedResult.type, seedResult.itemId)));
             const lastFmBoost = lastFmBoosts.get(song.id) || 0;
             return { song, score: maxScore + lastFmBoost };
-        })
-        .sort((a, b) => b.score - a.score);
+        });
 
-    const diverse = selectDiverseSongs(scored, count);
+    const diverse = buildMix(scored, count);
 
     return createResponse(c, {
         [/(getSimilarSongs2|getSimilarSongs2\.view)$/.test(c.req.path) ? 'similarSongs2' : 'similarSongs']: {
@@ -142,13 +141,21 @@ async function fetchLastFmBoosts(seeds: SongID3[], candidates: SongID3[]): Promi
     return boosts;
 }
 
-function selectDiverseSongs(
+function shuffle<T>(arr: T[]): T[] {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+function buildMix(
     scored: Array<{ song: SongID3; score: number }>,
     targetCount: number,
 ): SongID3[] {
     if (scored.length === 0) return [];
 
-    // Deduplicate the input pool by song id — callers may merge sources that overlap
+    // Deduplicate by song id
     const seen = new Set<string>();
     const pool = scored.filter((item) => {
         if (seen.has(item.song.id)) return false;
@@ -156,112 +163,106 @@ function selectDiverseSongs(
         return true;
     });
 
-    // Allow up to MAX_CONSECUTIVE songs from the same artist/album in a row,
-    // then enforce a minimum spacing gap before that artist/album can appear again.
-    const MAX_CONSECUTIVE_ARTIST = 2;
-    const MAX_CONSECUTIVE_ALBUM = 2;
-    const MIN_ARTIST_DISTANCE = 4;
-    const MIN_ALBUM_DISTANCE = 6;
+    if (pool.length === 0) return [];
 
-    const selected: SongID3[] = [];
-    const artistRunCount = new Map<string, number>(); // consecutive run length per artist
-    const albumRunCount = new Map<string, number>(); // consecutive run length per album
-    const artistLastIndex = new Map<string, number>();
-    const albumLastIndex = new Map<string, number>();
+    // Split into score tiers, shuffle within each tier for per-session variety.
+    // Tiers: high (top third of score range), mid, low, unscored (score=0).
+    const maxScore = Math.max(...pool.map((i) => i.score));
+    const tierHigh: Array<{ song: SongID3; score: number }> = [];
+    const tierMid: Array<{ song: SongID3; score: number }> = [];
+    const tierLow: Array<{ song: SongID3; score: number }> = [];
+    const tierZero: Array<{ song: SongID3; score: number }> = [];
 
-    const canPlace = (song: SongID3, relaxed: boolean): boolean => {
-        const artistIds = song.artists.map((a) => a.id);
-        const albumId = song.albumId || 'unknown';
-        const pos = selected.length;
-
-        const artistDist = MIN_ARTIST_DISTANCE;
-        const albumDist = MIN_ALBUM_DISTANCE;
-
-        for (const artistId of artistIds) {
-            const lastIdx = artistLastIndex.get(artistId);
-            if (lastIdx === undefined) continue;
-            const distance = pos - lastIdx;
-            // Within the gap: only allow if we haven't hit the consecutive cap yet
-            if (distance < (relaxed ? Math.ceil(artistDist / 2) : artistDist)) {
-                const run = artistRunCount.get(artistId) || 0;
-                if (run >= MAX_CONSECUTIVE_ARTIST) return false;
-            }
-        }
-
-        const lastAlbumIdx = albumLastIndex.get(albumId);
-        if (lastAlbumIdx !== undefined) {
-            const distance = pos - lastAlbumIdx;
-            if (distance < (relaxed ? Math.ceil(albumDist / 2) : albumDist)) {
-                const run = albumRunCount.get(albumId) || 0;
-                if (run >= MAX_CONSECUTIVE_ALBUM) return false;
-            }
-        }
-
-        return true;
-    };
-
-    const commit = (song: SongID3) => {
-        const artistIds = song.artists.map((a) => a.id);
-        const albumId = song.albumId || 'unknown';
-        const pos = selected.length;
-
-        // Update consecutive run counts: reset for artists/albums not in this song
-        // and increment for those that are
-        for (const [id, lastIdx] of artistLastIndex.entries()) {
-            if (pos - lastIdx === 1 && artistIds.includes(id)) {
-                artistRunCount.set(id, (artistRunCount.get(id) || 0) + 1);
-            } else if (pos - lastIdx > 0) {
-                artistRunCount.set(id, 0);
-            }
-        }
-        for (const artistId of artistIds) {
-            if (!artistLastIndex.has(artistId)) artistRunCount.set(artistId, 1);
-            artistLastIndex.set(artistId, pos);
-        }
-
-        const lastAlbumIdx = albumLastIndex.get(albumId);
-        if (lastAlbumIdx !== undefined && pos - lastAlbumIdx === 1) {
-            albumRunCount.set(albumId, (albumRunCount.get(albumId) || 0) + 1);
-        } else {
-            albumRunCount.set(albumId, 1);
-        }
-        albumLastIndex.set(albumId, pos);
-
-        selected.push(song);
-    };
-
-    // Pass 1: strict spacing with consecutive grouping allowed
     for (const item of pool) {
-        if (selected.length >= targetCount) break;
-        if (canPlace(item.song, false)) commit(item.song);
-    }
-
-    // Pass 2: relaxed spacing for the remainder
-    if (selected.length < targetCount) {
-        const selectedIds = new Set(selected.map((s) => s.id));
-        for (const item of pool) {
-            if (selected.length >= targetCount) break;
-            if (selectedIds.has(item.song.id)) continue;
-            if (canPlace(item.song, true)) {
-                commit(item.song);
-                selectedIds.add(item.song.id);
-            }
+        if (item.score === 0) {
+            tierZero.push(item);
+        } else if (maxScore > 0 && item.score >= maxScore * 0.6) {
+            tierHigh.push(item);
+        } else if (maxScore > 0 && item.score >= maxScore * 0.25) {
+            tierMid.push(item);
+        } else {
+            tierLow.push(item);
         }
     }
 
-    // Pass 3: fill any remaining slots with whatever is left, no distance checks
-    if (selected.length < targetCount) {
-        const selectedIds = new Set(selected.map((s) => s.id));
-        for (const item of pool) {
-            if (selected.length >= targetCount) break;
-            if (!selectedIds.has(item.song.id)) {
-                selected.push(item.song);
-                selectedIds.add(item.song.id);
+    shuffle(tierHigh);
+    shuffle(tierMid);
+    shuffle(tierLow);
+    shuffle(tierZero);
+
+    // Group each tier into per-artist buckets, then interleave across artists
+    // using a round-robin so no artist dominates a run.
+    const interleave = (tier: Array<{ song: SongID3; score: number }>): SongID3[] => {
+        const buckets = new Map<string, SongID3[]>();
+        for (const item of tier) {
+            const key = item.song.artists[0]?.id || 'unknown';
+            if (!buckets.has(key)) buckets.set(key, []);
+            buckets.get(key)!.push(item.song);
+        }
+        const queues = [...buckets.values()];
+        const out: SongID3[] = [];
+        let i = 0;
+        while (out.length < tier.length) {
+            let added = false;
+            for (let q = 0; q < queues.length; q++) {
+                const queue = queues[(q + i) % queues.length];
+                if (queue.length > 0) {
+                    out.push(queue.shift()!);
+                    added = true;
+                }
             }
+            if (!added) break;
+            i++;
+        }
+        return out;
+    };
+
+    // Build final list: high-tier songs first (most similar), then mid, low, zero
+    // so the mix starts with the most relevant songs and gradually broadens.
+    const ordered = [
+        ...interleave(tierHigh),
+        ...interleave(tierMid),
+        ...interleave(tierLow),
+        ...interleave(tierZero),
+    ];
+
+    // Final pass: enforce no same-artist back-to-back by bumping offenders forward
+    // without dropping any songs. Walk the list; if a song violates the gap, pull
+    // the next eligible song forward to swap it in.
+    const MIN_ARTIST_GAP = 3;
+    const result: SongID3[] = [];
+    const pending = [...ordered];
+
+    while (result.length < targetCount && pending.length > 0) {
+        const pos = result.length;
+        let placed = false;
+
+        for (let i = 0; i < pending.length; i++) {
+            const song = pending[i];
+            const artistIds = song.artists.map((a) => a.id);
+
+            const tooClose = artistIds.some((id) => {
+                for (let back = 1; back <= MIN_ARTIST_GAP && back <= pos; back++) {
+                    if (result[pos - back].artists.some((a) => a.id === id)) return true;
+                }
+                return false;
+            });
+
+            if (!tooClose) {
+                result.push(song);
+                pending.splice(i, 1);
+                placed = true;
+                break;
+            }
+        }
+
+        // Every remaining song violates the gap — just take the next one
+        if (!placed) {
+            result.push(pending.shift()!);
         }
     }
 
-    return selected;
+    return result;
 }
 
 async function enrichSong(song: SongID3, userId: string): Promise<SongID3> {
