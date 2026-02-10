@@ -130,7 +130,7 @@ export async function fetchAlbumMetadata(albumName: string, artistName: string, 
         }
     }
 
-    if (config.musicbrainz?.enabled !== false) {
+    if (config.musicbrainz?.enabled) {
         if (existingMusicBrainzId) {
             const mbData = await retryWithBackoff(() => MusicBrainz.enrichAlbumMetadata(existingMusicBrainzId));
 
@@ -213,7 +213,7 @@ export async function fetchArtistMetadata(artistName: string, existingMusicBrain
         }
     }
 
-    if (config.musicbrainz?.enabled !== false && existingMusicBrainzId) {
+    if (config.musicbrainz?.enabled && existingMusicBrainzId) {
         const mbArtist = await retryWithBackoff(() => MusicBrainz.getArtistById(existingMusicBrainzId));
 
         if (mbArtist) {
@@ -247,7 +247,7 @@ export async function fetchTrackMetadata(
         return metadata;
     }
 
-    if (config.musicbrainz?.enabled !== false) {
+    if (config.musicbrainz?.enabled) {
         if (existingMusicBrainzId) {
             const mbData = await retryWithBackoff(() => MusicBrainz.enrichTrackMetadata(existingMusicBrainzId));
 
@@ -285,7 +285,7 @@ export async function fetchTrackMetadata(
 }
 
 export async function getBestCoverArtUrl(albumName: string, artistName: string, musicBrainzReleaseId?: string): Promise<string | null> {
-    if (musicBrainzReleaseId) {
+    if (config.musicbrainz?.enabled && musicBrainzReleaseId) {
         const coverArt = await retryWithBackoff(() => MusicBrainz.getCoverArtUrls(musicBrainzReleaseId));
 
         if (coverArt?.front) {

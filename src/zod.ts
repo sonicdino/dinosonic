@@ -54,7 +54,7 @@ export const ConfigListenBrainzOptionSchema = z.object({
 });
 
 export const ConfigMusicBrainzOptionSchema = z.object({
-    enabled: z.boolean().default(true),
+    enabled: z.boolean().default(false),
 });
 
 export const ConfigSpotifyOptionSchema = z.object({
