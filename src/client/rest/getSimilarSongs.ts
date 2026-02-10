@@ -24,29 +24,20 @@ async function handlegetSimilarSongs(c: Context) {
 
     logger.debug(`Similarity search: ${seedResult.seeds.length} seeds, type=${seedResult.type}, id=${seedResult.itemId}`);
 
-    const candidates = await gatherCandidateSongs(seedResult.itemId, seedResult.type, user.backend.id);
+    const candidates = await gatherCandidateSongs(user.backend.id);
     const lastFmBoosts = await fetchLastFmBoosts(seedResult.seeds, candidates);
 
-    const scoredSongs = candidates
-        .filter((song) => !seedResult.seeds.some((s) => s.id === song.id))
+    const seedIds = new Set(seedResult.seeds.map((s) => s.id));
+    const scored = candidates
+        .filter((song) => !seedIds.has(song.id))
         .map((song) => {
             const maxScore = Math.max(...seedResult.seeds.map((seed) => calculateSimilarity(seed, song, seedResult.type, seedResult.itemId)));
             const lastFmBoost = lastFmBoosts.get(song.id) || 0;
             return { song, score: maxScore + lastFmBoost };
         })
-        .filter((item) => item.score > 0)
         .sort((a, b) => b.score - a.score);
 
-    const relatedSongs = await getRelatedButNotSeedSongs(seedResult.itemId, seedResult.type, seedResult.seeds, user.backend.id);
-
-    // Merge: relatedSongs take priority (higher score for same-seed-item songs),
-    // then append scoredSongs that aren't already present to avoid duplicates.
-    const seenIds = new Set(relatedSongs.map((r) => r.song.id));
-    const combined = [
-        ...relatedSongs,
-        ...scoredSongs.filter((s) => !seenIds.has(s.song.id)),
-    ];
-    const diverse = selectDiverseSongs(combined, count);
+    const diverse = selectDiverseSongs(scored, count);
 
     return createResponse(c, {
         [/(getSimilarSongs2|getSimilarSongs2\.view)$/.test(c.req.path) ? 'similarSongs2' : 'similarSongs']: {
@@ -113,20 +104,13 @@ async function gatherSeedSongs(inputId: string, userId: string) {
     return { seeds, type, itemId };
 }
 
-async function gatherCandidateSongs(seedItemId: string, seedType: 'song' | 'album' | 'artist' | null, userId: string): Promise<SongID3[]> {
+async function gatherCandidateSongs(userId: string): Promise<SongID3[]> {
     const candidates: SongID3[] = [];
 
     for await (const entry of database.list({ prefix: ['tracks'] })) {
         const parsed = SongSchema.safeParse(entry.value);
         if (!parsed.success) continue;
-
-        const song = parsed.data.subsonic;
-        const isSameAlbum = seedType === 'album' && song.albumId === seedItemId;
-        const isSameArtist = seedType === 'artist' && song.artists.some((a) => a.id === seedItemId);
-
-        if (!isSameAlbum && !isSameArtist) {
-            candidates.push(await enrichSong(song, userId));
-        }
+        candidates.push(await enrichSong(parsed.data.subsonic, userId));
     }
 
     return candidates;
@@ -158,49 +142,6 @@ async function fetchLastFmBoosts(seeds: SongID3[], candidates: SongID3[]): Promi
     return boosts;
 }
 
-async function getRelatedButNotSeedSongs(
-    seedItemId: string,
-    seedType: 'song' | 'album' | 'artist' | null,
-    seeds: SongID3[],
-    userId: string,
-): Promise<Array<{ song: SongID3; score: number }>> {
-    const related: Array<{ song: SongID3; score: number }> = [];
-
-    if (seedType === 'album') {
-        const albumEntry = await database.get(['albums', seedItemId]);
-        if (albumEntry.value) {
-            const album = AlbumSchema.parse(albumEntry.value).subsonic;
-            const unseeded = album.song
-                .map((s) => typeof s === 'string' ? s : (s as SongID3).id)
-                .filter((id) => !seeds.some((seed) => seed.id === id))
-                .slice(0, 3);
-
-            for (const songId of unseeded) {
-                const track = await database.get(['tracks', songId]);
-                if (track.value) {
-                    const songData = SongSchema.parse(track.value);
-                    related.push({ song: await enrichSong(songData.subsonic, userId), score: 60 });
-                }
-            }
-        }
-    } else if (seedType === 'artist') {
-        let found = 0;
-        for await (const entry of database.list({ prefix: ['tracks'] })) {
-            if (found >= 3) break;
-            const songData = SongSchema.safeParse(entry.value);
-            if (songData.success) {
-                const song = songData.data;
-                if (song.subsonic.artists.some((a) => a.id === seedItemId) && !seeds.some((s) => s.id === song.subsonic.id)) {
-                    related.push({ song: await enrichSong(song.subsonic, userId), score: 50 });
-                    found++;
-                }
-            }
-        }
-    }
-
-    return related;
-}
-
 function selectDiverseSongs(
     scored: Array<{ song: SongID3; score: number }>,
     targetCount: number,
@@ -214,8 +155,6 @@ function selectDiverseSongs(
         seen.add(item.song.id);
         return true;
     });
-
-    if (pool.length <= targetCount) return pool.map((s) => s.song);
 
     // Allow up to MAX_CONSECUTIVE songs from the same artist/album in a row,
     // then enforce a minimum spacing gap before that artist/album can appear again.
