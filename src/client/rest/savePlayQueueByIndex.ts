@@ -1,6 +1,6 @@
 import { Context, Hono } from '@hono/hono';
 import { createResponse, database, getField, getFields, getUserByUsername, validateAuth } from '../../util.ts';
-import { PlayQueueByIndexSchema, Song } from '../../zod.ts';
+import { PlayQueueSchema, Song } from '../../zod.ts';
 
 const savePlayQueueByIndex = new Hono();
 
@@ -24,12 +24,10 @@ async function handlesavePlayQueueByIndex(c: Context) {
 
     const entry: string[] = [];
 
-    if (ids && ids.length) {
-        for (const id of ids) {
-            const song = (await database.get(['tracks', id])).value as Song | undefined;
-            if (!song) continue;
-            entry.push(id);
-        }
+    for (const id of ids) {
+        const song = (await database.get(['tracks', id])).value as Song | undefined;
+        if (!song) continue;
+        entry.push(id);
     }
 
     if (!entry.length) return createResponse(c, {}, 'ok');
@@ -38,7 +36,8 @@ async function handlesavePlayQueueByIndex(c: Context) {
         return createResponse(c, {}, 'failed', { code: 10, message: 'currentIndex must be between 0 and length of queue - 1' });
     }
 
-    const playQueue = PlayQueueByIndexSchema.safeParse({
+    const playQueue = PlayQueueSchema.safeParse({
+        current: entry[currentIndex],
         currentIndex,
         position,
         entry,
@@ -48,7 +47,7 @@ async function handlesavePlayQueueByIndex(c: Context) {
     });
 
     if (!playQueue.success) return createResponse(c, {}, 'failed', { code: 10, message: 'A field is set wrong' });
-    await database.set(['playQueueByIndex', user.backend.id], playQueue.data);
+    await database.set(['playQueue', user.backend.id], playQueue.data);
 
     return createResponse(c, {}, 'ok');
 }

@@ -298,7 +298,8 @@ export const SubsonicUserSchema = z.object({
 });
 
 export const PlayQueueSchema = z.object({
-    current: z.string(),
+    current: z.string().optional(),
+    currentIndex: z.number().optional(),
     position: z.number(),
     username: z.string(),
     changed: z.date(),
@@ -306,14 +307,7 @@ export const PlayQueueSchema = z.object({
     entry: z.array(z.string().or(SongID3Schema)).optional(),
 });
 
-export const PlayQueueByIndexSchema = z.object({
-    currentIndex: z.number().optional(),
-    position: z.number().optional(),
-    username: z.string(),
-    changed: z.date(),
-    changedBy: z.string(),
-    entry: z.array(z.string().or(SongID3Schema)).optional(),
-});
+export const PlayQueueByIndexSchema = PlayQueueSchema;
 
 export const ApiKeySchema = z.object({
     key: z.string(),

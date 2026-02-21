@@ -7,7 +7,7 @@ const savePlayQueue = new Hono();
 async function handlesavePlayQueue(c: Context) {
     const isValidated = await validateAuth(c);
     if (isValidated instanceof Response) return isValidated;
-    // Some client that use POST will not be compatible with the way Hono handles requests and will only give one ID and not multiple. This is not a problem on my part, It is on Hono's part.
+
     const ids = await getFields(c, 'id');
     const client = await getField(c, 'c');
     let current = await getField(c, 'current');
@@ -24,19 +24,20 @@ async function handlesavePlayQueue(c: Context) {
 
     const entry: string[] = [];
 
-    if (ids && ids.length) {
-        for (const id of ids) {
-            const song = (await database.get(['tracks', id])).value as Song | undefined;
-            if (!song) continue;
-            entry.push(id);
-        }
+    for (const id of ids) {
+        const song = (await database.get(['tracks', id])).value as Song | undefined;
+        if (!song) continue;
+        entry.push(id);
     }
 
     if (!entry.length) return createResponse(c, {}, 'ok');
     if (!current) current = entry[0];
 
+    const currentIndex = entry.indexOf(current);
+
     const playQueue = PlayQueueSchema.safeParse({
         current,
+        currentIndex: currentIndex >= 0 ? currentIndex : 0,
         position,
         entry,
         username: isValidated.username,

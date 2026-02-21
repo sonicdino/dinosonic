@@ -62,7 +62,6 @@ import tokenInfo from './tokenInfo.ts';
 import getPlayQueueByIndex from './getPlayQueueByIndex.ts';
 import savePlayQueueByIndex from './savePlayQueueByIndex.ts';
 
-
 restRoutes.route('/', ping);
 restRoutes.route('/', getLicense);
 restRoutes.route('/', getMusicFolders);
