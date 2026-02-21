@@ -27,3 +27,4 @@ config.toml
 *.backup
 *.old
 *.orig
+AGENTS.md

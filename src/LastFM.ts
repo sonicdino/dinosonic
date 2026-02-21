@@ -39,7 +39,12 @@ export async function getTopTracks(artist: string, count = 50, mbid?: string) {
  * @param limit Number of similar tracks to return (default 50)
  * @returns Array of similar tracks with artist and name, or empty array on error
  */
-export async function getSimilarTracks(artist: string, track: string, limit = 50): Promise<Array<{ artist: string; name: string; match: number }>> {
+export async function getSimilarTracks(
+    artist: string,
+    track: string,
+    limit = 50,
+    timeoutMs = 5000,
+): Promise<Array<{ artist: string; name: string; match: number }>> {
     if (!config.last_fm?.api_key) {
         logger.debug('Last.fm getSimilarTracks: API key missing.');
         return [];
@@ -50,10 +55,15 @@ export async function getSimilarTracks(artist: string, track: string, limit = 50
     }
 
     try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
         const reqUrl = `https://ws.audioscrobbler.com/2.0/?method=track.getSimilar&artist=${encodeURIComponent(artist)}&track=${
             encodeURIComponent(track)
         }&limit=${limit}&api_key=${config.last_fm.api_key}&format=json`;
-        const response = await fetch(reqUrl);
+        const response = await fetch(reqUrl, { signal: controller.signal });
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
             logger.debug(`Last.fm getSimilarTracks: Failed to fetch similar tracks for "${artist} - ${track}". Status: ${response.status}`);
@@ -80,7 +90,11 @@ export async function getSimilarTracks(artist: string, track: string, limit = 50
             match: parseFloat(t.match as string) || 0,
         })).filter((t: { artist: string; name: string; match: number }) => t.artist && t.name);
     } catch (error) {
-        logger.debug(`Last.fm getSimilarTracks: Exception while fetching similar tracks for "${artist} - ${track}": ${error}`);
+        if ((error as Error).name === 'AbortError') {
+            logger.debug(`Last.fm getSimilarTracks: Timeout for "${artist} - ${track}"`);
+        } else {
+            logger.debug(`Last.fm getSimilarTracks: Exception for "${artist} - ${track}": ${error}`);
+        }
         return [];
     }
 }

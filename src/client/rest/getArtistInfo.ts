@@ -2,15 +2,9 @@ import { Context, Hono } from '@hono/hono';
 import { createResponse, database, getField, validateAuth } from '../../util.ts';
 import { Album, ArtistSchema, Song } from '../../zod.ts';
 import { getArtistIDByName } from '../../MediaScanner.ts';
+import { getCoverArtShareUrl } from '../../scanner/ShareManager.ts';
 
 const getArtistInfo = new Hono();
-
-function formatCoverUrl(c: Context, relativeUrl?: string): string | undefined {
-    if (!relativeUrl) return undefined;
-    const requestUrl = new URL(c.req.url);
-    const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
-    return `${baseUrl}${relativeUrl}`;
-}
 
 async function handleGetArtistInfo(c: Context) {
     const isValidated = await validateAuth(c);
@@ -50,42 +44,43 @@ async function handleGetArtistInfo(c: Context) {
 
     const artist = ArtistSchema.parse(finalArtistEntry.value);
 
-    let artistInfoResponse: Record<string, unknown> = {};
+    const coverArtId = artist.artist.coverArt || artist.artist.id;
+    const requestUrl = new URL(c.req.url);
+    const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
+    const description = `Cover art for ${artist.artist.name}`;
 
-    if (artist.artistInfo) {
-        const infoCopy = { ...artist.artistInfo };
+    const artistInfoResponse: Record<string, unknown> = {
+        biography: artist.artistInfo?.biography || '',
+        musicBrainzId: artist.artist.musicBrainzId || artist.artistInfo?.musicBrainzId,
+        lastFmUrl: artist.artistInfo?.lastFmUrl,
+        smallImageUrl: await getCoverArtShareUrl(coverArtId, 300, baseUrl, description),
+        mediumImageUrl: await getCoverArtShareUrl(coverArtId, 600, baseUrl, description),
+        largeImageUrl: await getCoverArtShareUrl(coverArtId, 1200, baseUrl, description),
+        similarArtist: [],
+    };
 
-        infoCopy.smallImageUrl = formatCoverUrl(c, artist.artistInfo.smallImageUrl);
-        infoCopy.mediumImageUrl = formatCoverUrl(c, artist.artistInfo.mediumImageUrl);
-        infoCopy.largeImageUrl = formatCoverUrl(c, artist.artistInfo.largeImageUrl);
-
-        const similarArtistDetails = [];
-        if (Array.isArray(infoCopy.similarArtist)) {
-            for (const artistName of infoCopy.similarArtist as string[]) {
-                const similarArtistId = await getArtistIDByName(artistName);
-                if (similarArtistId) {
-                    const simArtistEntry = await database.get(['artists', similarArtistId]);
-                    if (simArtistEntry.value) {
-                        const simArtist = ArtistSchema.parse(simArtistEntry.value);
-                        similarArtistDetails.push({
-                            id: simArtist.artist.id,
-                            name: simArtist.artist.name,
-                            coverArt: simArtist.artist.coverArt,
-                            artistImageUrl: formatCoverUrl(
-                                c,
-                                simArtist.artistInfo?.largeImageUrl || simArtist.artistInfo?.mediumImageUrl || simArtist.artistInfo?.smallImageUrl,
-                            ),
-                            albumCount: simArtist.artist.albumCount,
-                        });
-                    }
+    const similarArtistDetails = [];
+    if (artist.artistInfo?.similarArtist && Array.isArray(artist.artistInfo.similarArtist)) {
+        for (const artistName of artist.artistInfo.similarArtist as string[]) {
+            const similarArtistId = await getArtistIDByName(artistName);
+            if (similarArtistId) {
+                const simArtistEntry = await database.get(['artists', similarArtistId]);
+                if (simArtistEntry.value) {
+                    const simArtist = ArtistSchema.parse(simArtistEntry.value);
+                    const simCoverArtId = simArtist.artist.coverArt || simArtist.artist.id;
+                    similarArtistDetails.push({
+                        id: simArtist.artist.id,
+                        name: simArtist.artist.name,
+                        coverArt: simArtist.artist.coverArt,
+                        artistImageUrl: await getCoverArtShareUrl(simCoverArtId, 600, baseUrl, `Cover art for ${simArtist.artist.name}`),
+                        albumCount: simArtist.artist.albumCount,
+                    });
                 }
             }
         }
-        // deno-lint-ignore no-explicit-any
-        infoCopy.similarArtist = similarArtistDetails as any;
-
-        artistInfoResponse = infoCopy;
     }
+    // deno-lint-ignore no-explicit-any
+    artistInfoResponse.similarArtist = similarArtistDetails as any;
 
     return createResponse(c, {
         [/(getArtistInfo2|getArtistInfo2\.view)$/.test(c.req.path) ? 'artistInfo2' : 'artistInfo']: artistInfoResponse,

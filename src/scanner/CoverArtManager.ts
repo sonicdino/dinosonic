@@ -197,10 +197,10 @@ async function downloadFromUrl(url: string): Promise<CoverArtSource | null> {
         const source = url.includes('musicbrainz') || url.includes('coverartarchive')
             ? 'musicbrainz'
             : url.includes('spotify')
-                ? 'spotify'
-                : url.includes('last.fm') || url.includes('audioscrobbler')
-                    ? 'lastfm'
-                    : 'unknown';
+            ? 'spotify'
+            : url.includes('last.fm') || url.includes('audioscrobbler')
+            ? 'lastfm'
+            : 'unknown';
 
         return {
             data,
@@ -215,7 +215,7 @@ async function downloadFromUrl(url: string): Promise<CoverArtSource | null> {
 
 async function saveCoverArt(itemId: string, coverData: CoverArtSource): Promise<string | null> {
     const coversDir = path.join(config.data_folder, 'covers');
-    await Deno.mkdir(coversDir, { recursive: true }).catch(() => { });
+    await Deno.mkdir(coversDir, { recursive: true }).catch(() => {});
 
     const ext = MIME_TO_EXT[coverData.format.toLowerCase()] || 'jpg';
     const finalPath = path.join(coversDir, `${itemId}.${ext}`);

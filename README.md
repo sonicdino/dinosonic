@@ -249,7 +249,7 @@ enable_scrobbling = false # For ListenBrainz scrobbling (tokens set per-user in 
 | Option        | Type    | Default  | Description                                                |
 | ------------- | ------- | -------- | ---------------------------------------------------------- |
 | `enabled`     | boolean | `false`  | Whether FFmpeg-based transcoding for streaming is enabled. |
-| `ffmpeg_path` | string  | `ffmpeg` | Path to the FFmpeg executable.                             |  |
+| `ffmpeg_path` | string  | `ffmpeg` | Path to the FFmpeg executable.                             |
 
 #### Last.fm Options (`[last_fm]`)
 

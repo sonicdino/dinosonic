@@ -367,6 +367,73 @@ app.get('/share/:shareId', async (c: Context) => {
             return c.text('Shared item not found.', 404);
         }
 
+        // For coverArt shares, serve the raw image file directly
+        if (share.itemType === 'coverArt' && item && 'path' in item) {
+            const cover = item as CoverArt;
+            const sizeParam = c.req.query('size');
+            const size = sizeParam ? parseInt(sizeParam, 10) : 0;
+
+            try {
+                const fileInfo = await Deno.stat(cover.path);
+                if (!fileInfo) {
+                    return c.text('Cover file not found', 404);
+                }
+            } catch {
+                return c.text('Cover file not found', 404);
+            }
+
+            c.header('Cache-Control', 'public, max-age=86400');
+
+            if (!size || !config.transcoding?.enabled || !config.transcoding.ffmpeg_path) {
+                try {
+                    const fileData = await Deno.readFile(cover.path);
+                    c.header('Content-Type', cover.mimeType);
+                    return c.body(fileData);
+                } catch (e) {
+                    logger.error(`Error reading cover ${share.itemId}: ${e}`);
+                    return c.text('Error serving cover', 500);
+                }
+            }
+
+            const cacheDir = path.join(config.data_folder, 'cache', 'cover_shares');
+            await Deno.mkdir(cacheDir, { recursive: true }).catch(() => {});
+
+            const ext = cover.mimeType.split('/')[1] || 'jpg';
+            const cachedPath = path.join(cacheDir, `${share.itemId}_${size}.${ext}`);
+
+            try {
+                const cachedStat = await Deno.stat(cachedPath);
+                if (cachedStat) {
+                    const fileData = await Deno.readFile(cachedPath);
+                    c.header('Content-Type', cover.mimeType);
+                    return c.body(fileData);
+                }
+            } catch { /* cached file doesn't exist */ }
+
+            const ffmpegPath = config.transcoding.ffmpeg_path;
+            const cmd = new Deno.Command(ffmpegPath, {
+                args: ['-i', cover.path, '-vf', `scale=${size}:${size}`, '-y', cachedPath],
+                stdout: 'piped',
+                stderr: 'piped',
+            });
+
+            try {
+                const { success } = await cmd.output();
+                if (success) {
+                    const resizedData = await Deno.readFile(cachedPath);
+                    c.header('Content-Type', cover.mimeType);
+                    return c.body(resizedData);
+                }
+            } catch (e) {
+                logger.error(`FFmpeg failed for cover share ${share.itemId}: ${e}`);
+            }
+
+            // Fallback to original
+            const fileData = await Deno.readFile(cover.path);
+            c.header('Content-Type', cover.mimeType);
+            return c.body(fileData);
+        }
+
         // Prepare meta tag content
         let metaTitle = 'Dinosonic Share';
         let metaDescription = share.description || `Content shared by ${ownerUsername} via Dinosonic.`;

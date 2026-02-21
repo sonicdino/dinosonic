@@ -22,6 +22,7 @@ async function handledownload(c: Context) {
     return new Response(file, {
         headers: {
             'Content-Type': track.subsonic.contentType || 'audio/mpeg',
+            'Content-Length': file.byteLength.toString(),
             'Content-Disposition': `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`,
         },
     });
