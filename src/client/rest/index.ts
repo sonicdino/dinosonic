@@ -59,6 +59,9 @@ import deleteInternetRadioStation from './deleteInternetRadioStation.ts';
 import getTranscodeDecision from './getTranscodeDecision.ts';
 import getTranscodeStream from './getTranscodeStream.ts';
 import tokenInfo from './tokenInfo.ts';
+import getPlayQueueByIndex from './getPlayQueueByIndex.ts';
+import savePlayQueueByIndex from './savePlayQueueByIndex.ts';
+
 
 restRoutes.route('/', ping);
 restRoutes.route('/', getLicense);
@@ -117,5 +120,7 @@ restRoutes.route('/', deleteInternetRadioStation);
 restRoutes.route('/', getTranscodeDecision);
 restRoutes.route('/', getTranscodeStream);
 restRoutes.route('/', tokenInfo);
+restRoutes.route('/', getPlayQueueByIndex);
+restRoutes.route('/', savePlayQueueByIndex);
 
 export default restRoutes;
