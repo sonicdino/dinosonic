@@ -1,6 +1,6 @@
 <br />
 <p align="center">
-  <a href="https://github.com/sonicdino/dinosonic">
+  <a href="https://github.com/dinosoftware/dinosonic">
     <img src="https://avatars.githubusercontent.com/u/203427183?s=256&v=4" alt="Logo">
   </a>
 
@@ -16,11 +16,11 @@
   <a href="https://www.gnu.org/licenses/gpl-3.0">
     <img src="https://img.shields.io/badge/License-GPLv3-blue.svg?style=flat-square" alt="License: GPL v3">
   </a>
-  <a href="https://github.com/sonicdino/dinosonic/actions/workflows/build-release.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/sonicdino/dinosonic/build-release.yml?style=flat-square&logo=github&label=Build%20and%20Release%20Dinosonic&color=blue" alt="GitHub Actions Workflow Status">
+  <a href="https://github.com/dinosoftware/dinosonic/actions/workflows/build-release.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/dinosoftware/dinosonic/build-release.yml?style=flat-square&logo=github&label=Build%20and%20Release%20Dinosonic&color=blue" alt="GitHub Actions Workflow Status">
   </a>
-  <a href="https://github.com/users/sonicdino/packages/container/package/dinosonic">
-    <img src="https://img.shields.io/badge/docker-ghcr.io/sonicdino/dinosonic-blue?style=flat-square&logo=docker" alt="Docker Image">
+  <a href="https://github.com/users/dinosoftware/packages/container/package/dinosonic">
+    <img src="https://img.shields.io/badge/docker-ghcr.io/dinosoftware/dinosonic-blue?style=flat-square&logo=docker" alt="Docker Image">
   </a>
 </p>
 
@@ -61,7 +61,7 @@ docker run -d --name dinosonic \
   -e DINO_ARTIST_SEPARATORS=';/' \
   -e DINO_GENRE_SEPARATORS=';,' \
   -e DINO_DEFAULT_ADMIN_PASSWORD=admin \
-  ghcr.io/sonicdino/dinosonic:latest
+  ghcr.io/dinosoftware/dinosonic:latest
 ```
 
 Or as a docker compose:
@@ -69,7 +69,7 @@ Or as a docker compose:
 ```yaml
 services:
     dinosonic:
-        image: ghcr.io/sonicdino/dinosonic:latest
+        image: ghcr.io/dinosoftware/dinosonic:latest
         container_name: dinosonic
         restart: unless-stopped
         ports:
@@ -316,7 +316,7 @@ enable_scrobbling = false # For ListenBrainz scrobbling (tokens set per-user in 
 
 ## Contributing
 
-Feel free to contribute by submitting issues, feature requests, or pull requests at the [Dinosonic GitHub Repository](https://github.com/sonicdino/dinosonic).
+Feel free to contribute by submitting issues, feature requests, or pull requests at the [Dinosonic GitHub Repository](https://github.com/dinosoftware/dinosonic).
 
 ---
 
