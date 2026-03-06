@@ -1,7 +1,7 @@
 <br />
 <p align="center">
   <a href="https://github.com/dinosoftware/dinosonic">
-    <img src="https://avatars.githubusercontent.com/u/203427183?s=256&v=4" alt="Logo">
+    <img src="src/client/public/dinosonic.png" alt="Logo" height="320" width="320">
   </a>
 
 <h3 align="center">Dinosonic</h3>

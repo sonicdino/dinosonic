@@ -5,7 +5,7 @@ import type { MusicBrainzArtist, MusicBrainzRecording, MusicBrainzRelease } from
 const MUSICBRAINZ_API_BASE = 'https://musicbrainz.org/ws/2';
 const COVERART_API_BASE = 'https://coverartarchive.org';
 const RATE_LIMIT_DELAY = 1000; // MusicBrainz requires 1 request per second
-const USER_AGENT = 'Dinosonic/0.5.4 (https://github.com/sonicdino/dinosonic)';
+const USER_AGENT = 'Dinosonic/0.5.4 (https://github.com/dinosoftware/dinosonic)';
 
 let lastRequestTime = 0;
 
